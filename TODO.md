@@ -6,7 +6,6 @@ Pendências abertas do projeto, por prioridade. Levantadas e revisadas em 2026-1
 
 - [ ] **Fixar e verificar as dependências dos extras.** `opensearch-py`, `opensearch-protobufs`, `grpcio`, `protobuf` e `Events` vêm só dos extras e não estão fixados, e nenhum extra tem hash. Hoje só o lock do pygeoapi é baixado em modo de hashes, no estágio `wheels`. Para fixá-los, liste-os com versão e hash no `requirements/extra/requirements.txt`, ou crie um script que gere essa lista. O uWSGI é compilado, então só o hash do sdist pode ser verificado, e isso acontece no estágio `wheels`.
 - [ ] **Fixar a imagem base por tag datada ou digest.** As tags `3.12.4-py3.12` e `3.12.4-py3.12-devel` são reconstruídas, e as variantes datadas também são publicadas (por exemplo, `3.12.4-py3.12-20261025`). Os estágios `-devel` e o final devem usar a mesma data.
-- [ ] **Verificar o zip dos schemas OGC.** O `SCHEMAS_OPENGIS_NET.zip` é baixado sem conferência de checksum e muda no servidor sem versão. Fixe um SHA-256, guardado em `ARG` e verificado com `sha256sum -c`, ou baixe só os diretórios `ogcapi/` de uma fonte versionada.
 
 ## Média: comportamento em produção
 

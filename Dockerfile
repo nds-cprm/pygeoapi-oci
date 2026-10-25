@@ -5,13 +5,27 @@ ARG PYTHON_VERSION=3.12
 # default pygeoapi version, also read by the CI workflow (keep this format)
 ARG PYGEOAPI_VERSION=0.24.0
 
+# SHA-256 of SCHEMAS_OPENGIS_NET.zip, updated by hand: the file has no version
+# and changes in place on the server, so a new one fails the build until it is
+# checked and this hash replaced (sha256sum of the downloaded zip).
+# Current: Last-Modified Fri, 01 May 2026 13:52:22 GMT, 42634590 bytes
+ARG OGC_SCHEMAS_SHA256=c9aa5c7af6a8eeba4c68bc58295f37444dedab6838d184cbb95d0f09f1d8a927
+
 
 # OGC API schemas, served locally instead of fetched at runtime. The devel image
 # already has wget/unzip (the runtime one does not) and is pulled for the wheels
 # stage anyway; a separate stage keeps its cache apart and builds in parallel
 FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel AS schemas
 
+ARG OGC_SCHEMAS_SHA256
+
 RUN wget -q https://schemas.opengis.net/SCHEMAS_OPENGIS_NET.zip && \
+    if ! echo "${OGC_SCHEMAS_SHA256}  SCHEMAS_OPENGIS_NET.zip" | sha256sum -c --quiet -; then \
+        echo "SCHEMAS_OPENGIS_NET.zip is $(sha256sum SCHEMAS_OPENGIS_NET.zip | cut -d' ' -f1)," \
+            "expected ${OGC_SCHEMAS_SHA256}: check the new file and update" \
+            "OGC_SCHEMAS_SHA256" >&2; \
+        exit 1; \
+    fi && \
     unzip -q SCHEMAS_OPENGIS_NET.zip "ogcapi/*" -d /schemas.opengis.net
 
 
