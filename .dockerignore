@@ -2,7 +2,7 @@
 # context; add a line here when the Dockerfile starts using a new file
 *
 !requirements/
-!requirements-extra.txt
+requirements/*.sh
 !conf/
 !docker/
 !docker-entrypoint.d/

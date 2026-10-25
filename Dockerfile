@@ -25,18 +25,18 @@ ARG PYGEOAPI_VERSION
 # LDFLAGS=-s strips what is compiled here, like the base image does for its
 # runtime variant (the runtime image has no strip to do it afterwards)
 
-# pygeoapi: requirements/pygeoapi-${PYGEOAPI_VERSION}.txt is the lock of that
-# version (scripts/update-requirements.sh): it pins pygeoapi and its whole
+# pygeoapi: requirements/pygeoapi/${PYGEOAPI_VERSION}.txt is the lock of that
+# version (requirements/update-requirements.sh): it pins pygeoapi and its whole
 # dependency tree, with the hashes of their PyPI files. It leaves out what the
 # image already ships (GDAL, numpy...): the base image pins and hash-checks
 # those, so --no-deps fetches only the lock and never downloads them again;
 # they are constraints, so nothing can replace them, and the final pip install
 # checks that the tree is complete
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
-    lock=/tmp/requirements/pygeoapi-${PYGEOAPI_VERSION}.txt && \
+    lock=/tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt && \
     if [ ! -f "$lock" ]; then \
         echo "no lock file for pygeoapi ${PYGEOAPI_VERSION}:" \
-            "run scripts/update-requirements.sh ${PYGEOAPI_VERSION}" >&2; \
+            "run requirements/update-requirements.sh ${PYGEOAPI_VERSION}" >&2; \
         exit 1; \
     fi && \
     pip freeze --all > /tmp/base-constraints.txt && \
@@ -48,14 +48,13 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
 # first: in a constraints file they would turn hash-checking on for the extras
 # too, which have none yet
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
-    --mount=type=bind,source=requirements-extra.txt,target=/tmp/requirements-extra.txt \
     pip freeze --all > /tmp/base-constraints.txt && \
     sed -n 's/^\([^ #][^ ]*==[^ ]*\).*/\1/p' \
-        /tmp/requirements/pygeoapi-${PYGEOAPI_VERSION}.txt \
+        /tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt \
         > /tmp/pygeoapi-constraints.txt && \
     LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
         -c /tmp/base-constraints.txt -c /tmp/pygeoapi-constraints.txt \
-        -r /tmp/requirements-extra.txt
+        -r /tmp/requirements/extra/requirements.txt
 
 
 FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}
@@ -71,13 +70,13 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     pip freeze --all > /tmp/base-constraints.txt && \
     pip install --no-cache-dir --no-index --find-links /wheels \
         --require-hashes -c /tmp/base-constraints.txt \
-        -r /tmp/requirements/pygeoapi-${PYGEOAPI_VERSION}.txt
+        -r /tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt
 
-RUN --mount=type=bind,source=requirements-extra.txt,target=/tmp/requirements-extra.txt \
+RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
     pip freeze --all > /tmp/installed-constraints.txt && \
     pip install --no-cache-dir --no-index --find-links /wheels \
-        -c /tmp/installed-constraints.txt -r /tmp/requirements-extra.txt
+        -c /tmp/installed-constraints.txt -r /tmp/requirements/extra/requirements.txt
 
 COPY --from=schemas /schemas.opengis.net /schemas.opengis.net
 
