@@ -129,6 +129,12 @@ RUN mkdir -p /var/lib/pygeoapi && \
     chgrp 0 /var/lib/pygeoapi && \
     chmod g=u /var/lib/pygeoapi
 
+# unprivileged by default. UID 1000 is not in /etc/passwd on purpose: the base
+# image's 10-enable-nss-wrapper.sh creates a virtual user for it at start
+# (USER_NAME, default sgb; HOME=/tmp), as it does for the arbitrary UIDs
+# OpenShift assigns. Group 0 is the one that can write /var/lib/pygeoapi
+USER 1000:0
+
 EXPOSE 8000
 
 # HTTP GET on the landing page, answered by a uWSGI worker: fails if no worker
