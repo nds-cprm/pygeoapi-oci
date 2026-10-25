@@ -7,15 +7,28 @@ ARG PYGEOAPI_VERSION=0.24.0
 # ARG MAPPROXY_BASE_DIR=/var/lib/mapproxy
 
 
-# OGC API schemas, served locally instead of fetched at runtime. The base image
-# has no wget/unzip; they are installed here only, since this stage is discarded
-FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION} AS schemas
+# OGC API schemas, served locally instead of fetched at runtime. The devel image
+# already has wget/unzip (the runtime one does not) and is pulled for the wheels
+# stage anyway; a separate stage keeps its cache apart and builds in parallel
+FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel AS schemas
 
-RUN apt-get update && \
-    apt-get install --yes --no-install-recommends --no-install-suggests \
-        ca-certificates unzip wget && \
-    wget -q https://schemas.opengis.net/SCHEMAS_OPENGIS_NET.zip && \
+RUN wget -q https://schemas.opengis.net/SCHEMAS_OPENGIS_NET.zip && \
     unzip -q SCHEMAS_OPENGIS_NET.zip "ogcapi/*" -d /schemas.opengis.net
+
+
+# wheels for every Python dependency: the devel image has the compilers and
+# -dev headers, so packages without a binary wheel (uWSGI) are built here, against
+# the same Python and GDAL as the final stage; binary wheels are only downloaded
+FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel AS wheels
+
+ARG PYGEOAPI_VERSION
+
+# LDFLAGS=-s strips what is compiled here, like the base image does for its
+# runtime variant (the runtime image has no strip to do it afterwards)
+RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
+    LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
+        -c /tmp/requirements.txt -r /tmp/requirements.txt \
+        "pygeoapi==${PYGEOAPI_VERSION}"
 
 
 FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}
@@ -30,20 +43,38 @@ ARG PYGEOAPI_VERSION
 #         gettext-base && \
 #     rm -rf /var/lib/apt/lists/*
 
+# a single install from the wheels stage only (no index), so the resolver sees
+# every requirement and constraint at once
 RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
-    pip install --no-cache-dir --use-pep517  -c /tmp/requirements.txt  -r /tmp/requirements.txt && \
-    pip install --no-cache-dir "pygeoapi==${PYGEOAPI_VERSION}"
+    --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
+    pip install --no-cache-dir --no-index --find-links /wheels \
+        -c /tmp/requirements.txt -r /tmp/requirements.txt \
+        "pygeoapi==${PYGEOAPI_VERSION}"
 
 COPY --from=schemas /schemas.opengis.net /schemas.opengis.net
 
-# EXPOSE 8000
+# the OpenAPI document is generated on every start (docker-entrypoint.d), so its
+# directory is writable by group 0, which arbitrary UIDs (OpenShift) belong to
+ENV PYGEOAPI_CONFIG=/etc/pygeoapi/config.yml \
+    PYGEOAPI_OPENAPI=/var/lib/pygeoapi/openapi.yml
 
-# # uWSGI ping (uwsgi protocol), answered by a worker: fails if no worker is
-# # serving. Only applied by Docker: Podman ignores it in OCI images and
-# # Kubernetes never uses it, so Compose, Quadlet and probes call the same script
-# HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-#     CMD [ "healthcheck" ]
+COPY conf/pygeoapi-config.yml ${PYGEOAPI_CONFIG}
+COPY conf/uwsgi.conf /var/lib/uwsgi/uwsgi.conf
+COPY --chmod=755 docker-entrypoint.d/ /docker-entrypoint.d/
+COPY --chmod=755 bin/healthcheck /usr/local/bin/healthcheck
 
-# # ENTRYPOINT inherited from the base image (/docker-entrypoint.sh): runs the
-# # /docker-entrypoint.d scripts, then the CMD
-# CMD [ "uwsgi", "--ini", "/var/lib/uwsgi/uwsgi.conf" ]
+RUN mkdir -p /var/lib/pygeoapi && \
+    chgrp 0 /var/lib/pygeoapi && \
+    chmod g=u /var/lib/pygeoapi
+
+EXPOSE 8000
+
+# HTTP GET on the landing page, answered by a uWSGI worker: fails if no worker
+# is serving. Only applied by Docker: Podman ignores it in OCI images and
+# Kubernetes never uses it, so Compose, Quadlet and probes call the same script
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD [ "healthcheck" ]
+
+# ENTRYPOINT inherited from the base image (/docker-entrypoint.sh): runs the
+# /docker-entrypoint.d scripts, then the CMD
+CMD [ "uwsgi", "--ini", "/var/lib/uwsgi/uwsgi.conf" ]

@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+# HTTP GET on the landing page, served by a uWSGI worker: fails if no worker is
+# serving. Shared by the Docker HEALTHCHECK, Compose, Quadlet and Kubernetes probes
+import sys
+import urllib.request
+
+try:
+    with urllib.request.urlopen('http://127.0.0.1:8000/?f=json', timeout=4) as response:
+        sys.exit(0 if response.status == 200 else 1)
+except Exception as error:
+    print(error, file=sys.stderr)
+    sys.exit(1)

@@ -1,0 +1,61 @@
+# default pygeoapi configuration: replace it by mounting another file over
+# /etc/pygeoapi/config.yml (or point PYGEOAPI_CONFIG elsewhere)
+# ${VAR:-default} values are read from the environment by pygeoapi
+
+server:
+  bind:
+    host: 0.0.0.0
+    port: 8000
+  url: ${PYGEOAPI_SERVER_URL:-http://localhost:8000}
+  mimetype: application/json; charset=UTF-8
+  encoding: utf-8
+  languages:
+    - en-US
+  limits:
+    default_items: 10
+    max_items: 1000
+  map:
+    url: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+    attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+  # OGC API schemas copied into the image by the schemas stage
+  ogc_schemas_location: /schemas.opengis.net
+
+logging:
+  level: ${PYGEOAPI_LOGLEVEL:-ERROR}
+
+metadata:
+  identification:
+    title:
+      en: pygeoapi
+    description:
+      en: pygeoapi default configuration
+    keywords:
+      en:
+        - geospatial
+        - api
+    keywords_type: theme
+    terms_of_service: https://creativecommons.org/licenses/by/4.0/
+    url: https://pygeoapi.io
+  license:
+    name: CC-BY 4.0 license
+    url: https://creativecommons.org/licenses/by/4.0/
+  provider:
+    name: pygeoapi
+    url: https://pygeoapi.io
+  contact:
+    name: pygeoapi
+    position: Administrator
+    address: ''
+    city: ''
+    stateorprovince: ''
+    postalcode: ''
+    country: ''
+    phone: ''
+    fax: ''
+    email: ''
+    url: https://pygeoapi.io
+    hours: ''
+    instructions: ''
+    role: pointOfContact
+
+resources: {}
