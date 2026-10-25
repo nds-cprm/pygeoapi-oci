@@ -20,7 +20,7 @@ Um repositório para gerar uma imagem de contêiner OCI do [pygeoapi](https://py
 - `conf/uwsgi.conf` → `/var/lib/uwsgi/uwsgi.conf`: carrega `pygeoapi.flask_app:APP` via HTTP direto na porta 8000 (`http-socket`, sem processo roteador), pensado para ficar atrás de um proxy reverso, ingress ou balanceador. Usa `die-on-term`, porque no uWSGI 2.0 o SIGTERM recarrega em vez de parar.
 - `conf/pygeoapi-config.yml` → `/etc/pygeoapi/config.yml` (`PYGEOAPI_CONFIG`): configuração padrão sem coleções (`resources: {}`), com `ogc_schemas_location: /schemas.opengis.net`. Em produção, monte outro arquivo por cima ou aponte `PYGEOAPI_CONFIG` para outro caminho. O pygeoapi substitui `${VAR:-padrão}` por variáveis de ambiente.
 - `docker-entrypoint.d/20-pygeoapi-openapi.sh`: gera o OpenAPI em `PYGEOAPI_OPENAPI` (`/var/lib/pygeoapi/openapi.yml`) a cada início, para refletir a configuração montada.
-- `bin/healthcheck` → `/usr/local/bin/healthcheck`: faz um GET em `http://127.0.0.1:8000/?f=json`, que é respondido por um worker do uWSGI. É o mesmo script para o `HEALTHCHECK` do Docker, para o Compose, o Quadlet e as probes do Kubernetes.
+- `docker/healthcheck` → `/usr/local/bin/healthcheck`: faz um GET em `http://127.0.0.1:8000/?f=json`, que é respondido por um worker do uWSGI. É o mesmo script para o `HEALTHCHECK` do Docker, para o Compose, o Quadlet e as probes do Kubernetes.
 
 Build args e seus valores padrão: `GDAL_VERSION=3.12.4`, `PYTHON_VERSION=3.12`, `PYGEOAPI_VERSION=0.24.0`. Um comentário diz que a linha do `PYGEOAPI_VERSION` também é lida por um workflow de CI, então mantenha o formato `ARG NOME=valor` nessa linha. Esse workflow ainda não existe.
 

@@ -61,7 +61,7 @@ ENV PYGEOAPI_CONFIG=/etc/pygeoapi/config.yml \
 COPY conf/pygeoapi-config.yml ${PYGEOAPI_CONFIG}
 COPY conf/uwsgi.conf /var/lib/uwsgi/uwsgi.conf
 COPY --chmod=755 docker-entrypoint.d/ /docker-entrypoint.d/
-COPY --chmod=755 bin/healthcheck /usr/local/bin/healthcheck
+COPY --chmod=755 docker/healthcheck /usr/local/bin/healthcheck
 
 RUN mkdir -p /var/lib/pygeoapi && \
     chgrp 0 /var/lib/pygeoapi && \
