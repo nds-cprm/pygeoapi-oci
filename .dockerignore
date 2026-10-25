@@ -1,0 +1,8 @@
+# allowlist: only what the Dockerfile COPYs or bind-mounts goes into the build
+# context; add a line here when the Dockerfile starts using a new file
+*
+!requirements.txt
+!requirements-extra.txt
+!conf/
+!docker/
+!docker-entrypoint.d/

@@ -2,9 +2,8 @@
 ARG GDAL_VERSION=3.12.4
 ARG PYTHON_VERSION=3.12
 
-# default MapProxy version, also read by the CI workflow (keep this format)
+# default pygeoapi version, also read by the CI workflow (keep this format)
 ARG PYGEOAPI_VERSION=0.24.0
-# ARG MAPPROXY_BASE_DIR=/var/lib/mapproxy
 
 
 # OGC API schemas, served locally instead of fetched at runtime. The devel image
@@ -25,31 +24,45 @@ ARG PYGEOAPI_VERSION
 
 # LDFLAGS=-s strips what is compiled here, like the base image does for its
 # runtime variant (the runtime image has no strip to do it afterwards)
+
+# pygeoapi: requirements.txt pins its dependencies (scripts/update-requirements.sh);
+# the packages the image already ships (GDAL, numpy...) are constraints, so
+# nothing pulled in can replace them
 RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
+    pip freeze --all > /tmp/base-constraints.txt && \
     LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
-        -c /tmp/requirements.txt -r /tmp/requirements.txt \
+        -c /tmp/base-constraints.txt -r /tmp/requirements.txt \
         "pygeoapi==${PYGEOAPI_VERSION}"
+
+# extras, in a layer of their own: also constrained to requirements.txt, so they
+# cannot move any pygeoapi dependency
+RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
+    --mount=type=bind,source=requirements-extra.txt,target=/tmp/requirements-extra.txt \
+    pip freeze --all > /tmp/base-constraints.txt && \
+    LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
+        -c /tmp/base-constraints.txt -c /tmp/requirements.txt \
+        -r /tmp/requirements-extra.txt
 
 
 FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}
 
 ARG PYGEOAPI_VERSION
 
-# WORKDIR ${MAPPROXY_BASE_DIR}
-
-# # envsubst (the devel image already has the compilers and -dev headers)
-# RUN apt-get update && \
-#     apt-get install --yes --no-install-recommends --no-install-suggests \
-#         gettext-base && \
-#     rm -rf /var/lib/apt/lists/*
-
-# a single install from the wheels stage only (no index), so the resolver sees
-# every requirement and constraint at once
+# installs from the wheels stage only (no index): pygeoapi first, constrained to
+# this image's own packages; then the extras, constrained to everything already
+# installed, so they can only add packages, never change one
 RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
     --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
+    pip freeze --all > /tmp/base-constraints.txt && \
     pip install --no-cache-dir --no-index --find-links /wheels \
-        -c /tmp/requirements.txt -r /tmp/requirements.txt \
+        -c /tmp/base-constraints.txt -r /tmp/requirements.txt \
         "pygeoapi==${PYGEOAPI_VERSION}"
+
+RUN --mount=type=bind,source=requirements-extra.txt,target=/tmp/requirements-extra.txt \
+    --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
+    pip freeze --all > /tmp/installed-constraints.txt && \
+    pip install --no-cache-dir --no-index --find-links /wheels \
+        -c /tmp/installed-constraints.txt -r /tmp/requirements-extra.txt
 
 COPY --from=schemas /schemas.opengis.net /schemas.opengis.net
 

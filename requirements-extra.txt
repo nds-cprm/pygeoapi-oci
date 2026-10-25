@@ -1,0 +1,4 @@
+# extra dependencies (providers, application server), edited by hand; installed
+# after requirements.txt, constrained to what is already installed
+opensearch-dsl==2.1.0
+uWSGI==2.0.31
