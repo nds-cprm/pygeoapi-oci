@@ -50,7 +50,7 @@ O `podman build` usa o formato OCI por padrão e avisa que vai ignorar o `HEALTH
 
 ## Pendências e armadilhas
 
-As pendências ficam no [TODO.md](TODO.md). Ao resolver uma, marque-a lá e atualize este arquivo se o comportamento da imagem mudar.
+As pendências abertas ficam no [TODO.md](TODO.md). Ao resolver uma, remova-a de lá, já que o histórico fica no git, e atualize este arquivo se o comportamento da imagem mudar.
 
 - Um `ARG` declarado antes do primeiro `FROM` só vale para as linhas `FROM`. Para usá-lo dentro de um estágio, repita `ARG NOME` depois do `FROM`, como já é feito com o `PYGEOAPI_VERSION`. Sem isso, a instalação roda como `pip install "pygeoapi=="` e falha.
 - A base dá suporte a UIDs arbitrários (estilo OpenShift) com o script `10-enable-nss-wrapper.sh`, que usa `HOME=/tmp` quando o UID não existe no `/etc/passwd`. Com `--user 12345:0`, a imagem funciona, porque `/var/lib/pygeoapi` tem escrita para o grupo 0.
@@ -62,7 +62,7 @@ As pendências ficam no [TODO.md](TODO.md). Ao resolver uma, marque-a lá e atua
 A instalação tem três camadas, cada uma presa às anteriores:
 
 1. **Base:** os pacotes da imagem base. As restrições são geradas no build e acompanham a tag da base, sem arquivo no repositório.
-2. **pygeoapi:** o lock `requirements/pygeoapi/${PYGEOAPI_VERSION}.txt`, gerado pelo script, com o pygeoapi e cada dependência dele fixados e com hash. O pip roda em modo de hashes (`--require-hashes`).
+2. **pygeoapi:** o lock `requirements/pygeoapi/${PYGEOAPI_VERSION}.txt`, gerado pelo script, com o pygeoapi e cada dependência dele fixados e com hash. O `pip wheel` do estágio `wheels`, que baixa os arquivos, roda em modo de hashes (`--require-hashes`). O `pip install` final usa o lock sem hashes, porque as wheels compiladas ali não teriam hash do PyPI para bater.
 3. **Extras:** o `requirements/extra/requirements.txt`, editado à mão. É instalado por último e só pode acrescentar pacotes. Ainda não tem hashes.
 
 Fluxo (o workflow `update-locks` faz os dois primeiros casos sozinho quando o Dockerfile muda no `main`; à mão, o fluxo é o mesmo):
@@ -70,7 +70,7 @@ Fluxo (o workflow `update-locks` faz os dois primeiros casos sozinho quando o Do
 - **Troca da tag da imagem base:** rode `./requirements/update-requirements.sh requirements/pygeoapi/*` para regenerar todos os locks, já que eles dependem dos pacotes da base.
 - Não regenere um lock existente sem motivo. A ideia é que um rebuild da mesma versão instale as mesmas dependências.
 
-No modo de hashes, um lock ausente ou incompleto faz o build falhar, em vez de deixar passar algo sem versão fixa:
+No modo de hashes do estágio `wheels`, um lock ausente ou incompleto faz o build falhar, em vez de deixar passar algo sem versão fixa:
 - `no lock file for pygeoapi X`: falta o lock dessa versão.
 - `Hashes are required in --require-hashes mode`: um pacote necessário não está no lock, por exemplo depois de trocar a base sem regenerar os locks.
 - `THESE PACKAGES DO NOT MATCH THE HASHES`: um arquivo baixado do PyPI não bate com o hash. Pode ser uma versão republicada ou adulteração. Investigue antes de regenerar.
