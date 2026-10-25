@@ -7,7 +7,20 @@ ARG PYGEOAPI_VERSION=0.24.0
 # ARG MAPPROXY_BASE_DIR=/var/lib/mapproxy
 
 
+# OGC API schemas, served locally instead of fetched at runtime. The base image
+# has no wget/unzip; they are installed here only, since this stage is discarded
+FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION} AS schemas
+
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends --no-install-suggests \
+        ca-certificates unzip wget && \
+    wget -q https://schemas.opengis.net/SCHEMAS_OPENGIS_NET.zip && \
+    unzip -q SCHEMAS_OPENGIS_NET.zip "ogcapi/*" -d /schemas.opengis.net
+
+
 FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}
+
+ARG PYGEOAPI_VERSION
 
 # WORKDIR ${MAPPROXY_BASE_DIR}
 
@@ -21,10 +34,7 @@ RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
     pip install --no-cache-dir --use-pep517  -c /tmp/requirements.txt  -r /tmp/requirements.txt && \
     pip install --no-cache-dir "pygeoapi==${PYGEOAPI_VERSION}"
 
-RUN mkdir /schemas.opengis.net \
-    && curl -O http://schemas.opengis.net/SCHEMAS_OPENGIS_NET.zip \
-    && unzip ./SCHEMAS_OPENGIS_NET.zip "ogcapi/*" -d /schemas.opengis.net \
-    && rm -f ./SCHEMAS_OPENGIS_NET.zip 
+COPY --from=schemas /schemas.opengis.net /schemas.opengis.net
 
 # EXPOSE 8000
 
