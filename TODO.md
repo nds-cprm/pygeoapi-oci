@@ -1,6 +1,6 @@
 # TODO
 
-Pendências abertas do projeto, por prioridade. Levantadas e revisadas em 2026-10-25 com builds e execuções de teste no Podman (arm64). Os itens concluídos são removidos, e o histórico fica no git.
+Pendências abertas do projeto, por prioridade. Levantadas e revisadas em 2026-10-25, a última vez depois do commit `2e6d471`, com builds e execuções de teste no Podman (arm64). Os itens concluídos são removidos, e o histórico fica no git.
 
 ## Alta: reprodutibilidade e segurança
 
@@ -11,7 +11,7 @@ Pendências abertas do projeto, por prioridade. Levantadas e revisadas em 2026-1
 
 - [ ] **Fixar as dependências de build que não vêm da base.** O numpy, o setuptools e os demais pacotes da base já estão fixados no build com `--build-constraint`, já que o `-c` não alcança o ambiente de build isolado. Cython, meson e meson-python, usados para compilar o `rasterio`, o `pyproj`, o `shapely` e o uWSGI, continuam sem versão fixa e sem hash. No último build foram Cython 3.3.0, meson 1.12.1 e meson-python 0.22.1. Para fixá-los, crie um arquivo de restrições de build, com versões e hashes, e passe-o como um segundo `--build-constraint`.
 - [ ] **Testar o build em amd64.** A compilação do `rasterio`, do `pyproj` e do `shapely` só foi testada em arm64.
-- [ ] **Documentar e testar o uso com sistema de arquivos somente leitura.** Com `--read-only`, o container não sobe (`Read-only file system` ao gerar `/var/lib/pygeoapi/openapi.yml`). Funciona com `--tmpfs /var/lib/pygeoapi` ou um volume. Deixe isso documentado para Kubernetes (`readOnlyRootFilesystem` com `emptyDir`) e Quadlet.
+- [ ] **Documentar o uso com sistema de arquivos somente leitura.** Testado com `USER 1000:0`. Com `--read-only`, o container precisa de dois diretórios graváveis. O primeiro é `/var/lib/pygeoapi`, onde o OpenAPI é gerado a cada início. O segundo é `/tmp`, onde o nss-wrapper da base cria o passwd virtual quando o UID não está no `/etc/passwd`. Sem o `/tmp`, o container sai logo no início. O Podman monta `tmpfs` em `/tmp` sozinho (`--read-only-tmpfs`), mas o Docker não. Falta documentar `--tmpfs /var/lib/pygeoapi --tmpfs /tmp` para Docker e Compose, `readOnlyRootFilesystem` com dois `emptyDir` para Kubernetes, e `ReadOnly=true` com `Tmpfs=` para Quadlet.
 - [ ] **Tornar a porta configurável num só lugar.** A porta 8000 está repetida em `EXPOSE`, `conf/uwsgi.conf` (`http-socket`), `docker/healthcheck` e `conf/pygeoapi-config.yml` (`server.bind`). Mudar uma delas sem as outras quebra o healthcheck.
 - [ ] **Configurar o `HEALTHCHECK` para o Podman.** No formato OCI, que é o padrão do Podman, o `HEALTHCHECK` é descartado no build. Defina o `--format docker` no CI ou documente o `HealthCmd=healthcheck` no Quadlet.
 - [ ] **Medir o tempo de geração do OpenAPI na subida.** O `20-pygeoapi-openapi.sh` regenera o documento a cada início. Com muitas coleções, isso pode atrasar o início além do `--start-period=15s` do healthcheck e das probes.
