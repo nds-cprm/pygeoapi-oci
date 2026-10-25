@@ -31,7 +31,22 @@ ARG PYGEOAPI_VERSION
 # image already ships (GDAL, numpy...): the base image pins and hash-checks
 # those, so --no-deps fetches only the lock and never downloads them again;
 # they are constraints, so nothing can replace them, and the final pip install
-# checks that the tree is complete
+# checks that the tree is complete.
+# NO_BINARY packages are built from their sdist (hash-checked like the rest)
+# against the image's own GDAL, PROJ and GEOS, instead of the PyPI wheels that
+# bundle other copies of them (rasterio alone ships a whole GDAL). Their
+# versions come from the lock, and every name has to be in it: a typo, or a
+# package the pygeoapi version no longer depends on, stops the build. Tested
+# with rasterio 1.5.2, pyproj 3.8.0 and shapely 2.2.0 on GDAL 3.12.4, PROJ
+# 9.6.0 and GEOS 3.13.1 (rasterio needs GDAL >= 3.8, pyproj PROJ >= 9.4).
+# pyproj looks for the proj executable, which the devel image does not have
+# (only the libproj-dev headers): PROJ_DIR and PROJ_VERSION, from pkg-config,
+# replace it.
+# Build dependencies (numpy, setuptools...) are pinned with --build-constraint
+# to the base image's versions: -c only reaches the packages being installed,
+# not the isolated environments their sdists are built in
+ARG NO_BINARY=rasterio,pyproj,shapely
+
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     lock=/tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt && \
     if [ ! -f "$lock" ]; then \
@@ -39,9 +54,20 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
             "run requirements/update-requirements.sh ${PYGEOAPI_VERSION}" >&2; \
         exit 1; \
     fi && \
+    for name in $(echo "${NO_BINARY}" | tr ',' ' '); do \
+        if ! spec=$(grep -io "^${name}==[^ ]*" "$lock"); then \
+            echo "${name} (NO_BINARY) is not in the lock of pygeoapi" \
+                "${PYGEOAPI_VERSION}: fix the name or remove it from NO_BINARY" >&2; \
+            exit 1; \
+        fi; \
+        echo "building ${spec} from its sdist"; \
+    done && \
     pip freeze --all > /tmp/base-constraints.txt && \
+    PROJ_DIR=/usr PROJ_VERSION=$(pkg-config --modversion proj) \
     LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
-        --require-hashes --no-deps -c /tmp/base-constraints.txt -r "$lock"
+        --require-hashes --no-deps --no-binary "${NO_BINARY}" \
+        -c /tmp/base-constraints.txt --build-constraint /tmp/base-constraints.txt \
+        -r "$lock"
 
 # extras, in a layer of their own: also constrained to the versions in the
 # lock, so they cannot move any pygeoapi dependency. Its hashes are stripped
@@ -54,6 +80,7 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
         > /tmp/pygeoapi-constraints.txt && \
     LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
         -c /tmp/base-constraints.txt -c /tmp/pygeoapi-constraints.txt \
+        --build-constraint /tmp/base-constraints.txt \
         -r /tmp/requirements/extra/requirements.txt
 
 
@@ -62,21 +89,29 @@ FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}
 ARG PYGEOAPI_VERSION
 
 # installs from the wheels stage only (no index): pygeoapi first, constrained to
-# this image's own packages and checked again against the hashes (the wheels
-# stage keeps the PyPI files as they are); then the extras, constrained to
-# everything already installed, so they can only add packages, never change one
+# this image's own packages; then the extras, constrained to everything already
+# installed, so they can only add packages, never change one. Hashes were
+# checked when the wheels stage downloaded each file; they are stripped here,
+# since the wheels built from source there have no PyPI hash to match
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
     pip freeze --all > /tmp/base-constraints.txt && \
+    sed -n 's/^\([^ #][^ ]*==[^ ]*\).*/\1/p' \
+        /tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt \
+        > /tmp/pygeoapi-requirements.txt && \
     pip install --no-cache-dir --no-index --find-links /wheels \
-        --require-hashes -c /tmp/base-constraints.txt \
-        -r /tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt
+        -c /tmp/base-constraints.txt -r /tmp/pygeoapi-requirements.txt
 
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
     pip freeze --all > /tmp/installed-constraints.txt && \
     pip install --no-cache-dir --no-index --find-links /wheels \
         -c /tmp/installed-constraints.txt -r /tmp/requirements/extra/requirements.txt
+
+# pyproj built from source has no PROJ data of its own and, unlike libproj
+# (which osgeo and rasterio use), does not look in /usr/share/proj by default;
+# point it at the proj-data package the base image ships
+ENV PROJ_DATA=/usr/share/proj
 
 COPY --from=schemas /schemas.opengis.net /schemas.opengis.net
 
