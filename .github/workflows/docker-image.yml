@@ -5,9 +5,20 @@
 name: Docker Image CI
 
 on:
-  # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal tags. There is no
-  # scheduled rebuild: a new base image invalidates every layer, so every build started by gdal-oci is a full one
+  # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal tags, with their
+  # versions in gdal_version and python_version (pull requests build the ARG defaults of the Dockerfile).
+  # There is no scheduled rebuild: a new base image invalidates every layer, so every build started by
+  # gdal-oci is a full one
   workflow_dispatch:
+    inputs:
+      gdal_version:
+        description: ndscprm/gdal GDAL version (base image tags). Empty = ARG GDAL_VERSION in the Dockerfile
+        required: false
+        default: ""
+      python_version:
+        description: ndscprm/gdal Python version (base image tags). Empty = ARG PYTHON_VERSION in the Dockerfile
+        required: false
+        default: ""
   pull_request:
     branches: [main]
 
@@ -35,6 +46,11 @@ jobs:
       # the version of the build is the default of ARG PYGEOAPI_VERSION (lock in requirements/pygeoapi/)
       version-arg: PYGEOAPI_VERSION
       push: ${{ github.event_name != 'pull_request' }}
+      # base image versions given by gdal-oci when it starts this workflow (the tags it has just published);
+      # empty lines are ignored, so without them the ARG defaults of the Dockerfile are built
+      build-args: |
+        ${{ inputs.gdal_version && format('GDAL_VERSION={0}', inputs.gdal_version) || '' }}
+        ${{ inputs.python_version && format('PYTHON_VERSION={0}', inputs.python_version) || '' }}
       labels: |
         org.opencontainers.image.title=pygeoapi
         org.opencontainers.image.description=Implementação OCI de pygeoapi
