@@ -1,0 +1,52 @@
+name: pygeoapi-nginx
+
+# Logs go to stdout/stderr and are stored by the container runtime; without
+# limits the json-file driver grows forever. With Docker, a host-wide default in
+# /etc/docker/daemon.json (e.g. "log-driver": "local") is an alternative.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  pygeoapi:
+    image: ${PYGEOAPI_IMAGE:-docker.io/ndscprm/pygeoapi:0.24.0}
+    read_only: true
+    # /tmp: nss_wrapper passwd entry for the image UID; /var/lib/pygeoapi: the
+    # OpenAPI document, generated on every start
+    tmpfs:
+      - /tmp
+      - /var/lib/pygeoapi
+    environment:
+      # public URL (the nginx below), base of every link pygeoapi generates;
+      # include the subpath when publishing under one
+      PYGEOAPI_SERVER_URL: ${PYGEOAPI_SERVER_URL:-http://localhost:8080}
+    # your own configuration (collections), replacing the default one:
+    # volumes:
+    #   - ./conf/pygeoapi/config.yml:/etc/pygeoapi/config.yml:ro
+    healthcheck:
+      test: ["CMD", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
+
+  # The image speaks the uwsgi protocol on port 8000; nginx exposes it as HTTP.
+  # Unprivileged image: runs as UID 101 and listens on 8080.
+  nginx:
+    image: docker.io/nginxinc/nginx-unprivileged:1.30-alpine
+    depends_on:
+      pygeoapi:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./conf/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    logging: *logging

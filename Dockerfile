@@ -149,10 +149,11 @@ RUN mkdir -p /var/lib/pygeoapi && \
 # OpenShift assigns. Group 0 is the one that can write /var/lib/pygeoapi
 USER 1000:0
 
+# uwsgi protocol, not HTTP: put nginx (uwsgi_pass) in front, see examples/
 EXPOSE 8000
 
-# HTTP GET on the landing page, answered by a uWSGI worker: fails if no worker
-# is serving. Only applied by Docker: Podman ignores it in OCI images and
+# uWSGI ping (uwsgi protocol), answered by a worker: fails if no worker is
+# serving. Only applied by Docker: Podman ignores it in OCI images and
 # Kubernetes never uses it, so Compose, Quadlet and probes call the same script
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD [ "healthcheck" ]

@@ -1,12 +1,7 @@
-#!/usr/bin/env python3
-# HTTP GET on the landing page, served by a uWSGI worker: fails if no worker is
-# serving. Shared by the Docker HEALTHCHECK, Compose, Quadlet and Kubernetes probes
-import sys
-import urllib.request
-
-try:
-    with urllib.request.urlopen('http://127.0.0.1:8000/?f=json', timeout=4) as response:
-        sys.exit(0 if response.status == 200 else 1)
-except Exception as error:
-    print(error, file=sys.stderr)
-    sys.exit(1)
+#!/bin/sh
+# Container health check, shared by every runtime (Dockerfile HEALTHCHECK,
+# Compose, Podman/Quadlet, Kubernetes probes): uWSGI ping (uwsgi protocol),
+# answered by a worker, so it fails if no worker is serving. When serving HTTP
+# instead (http-socket), override this file too.
+# Nagios exit codes (2 = critical) are mapped to 1, as Docker reserves 2.
+uwsgi --socket 127.0.0.1:8000 --nagios || exit 1

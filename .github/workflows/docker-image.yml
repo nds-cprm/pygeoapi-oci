@@ -1,0 +1,47 @@
+# Builds, tests, scans and publishes ndscprm/pygeoapi with the reusable workflow of the base image
+# (README of gdal-oci, "Workflow reutilizável"): native runners per architecture (amd64 and arm64, so
+# rasterio, pyproj and shapely are compiled without emulation), push by digest, tags only after the tests
+# and scans of both architectures. Pull requests are only built and tested (no push, no secrets).
+name: Docker Image CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# one publishing build at a time (never cancelled); a new commit cancels the build of the previous one in
+# the same pull request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  image:
+    uses: nds-cprm/gdal-oci/.github/workflows/oci-image.yml@main
+    permissions:
+      contents: read
+      # upload of the SARIF reports to code scanning
+      security-events: write
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    with:
+      image: docker.io/ndscprm/pygeoapi
+      # the version of the build is the default of ARG PYGEOAPI_VERSION (lock in requirements/pygeoapi/)
+      version-arg: PYGEOAPI_VERSION
+      push: ${{ github.event_name != 'pull_request' }}
+      labels: |
+        org.opencontainers.image.title=pygeoapi
+        org.opencontainers.image.description=Implementação OCI de pygeoapi
+        org.opencontainers.image.version={version}
+        org.opencontainers.image.licenses=Apache-2.0
+        org.opencontainers.image.url=https://github.com/nds-cprm/pygeoapi-oci
+      # the final stage has no name: no target, Bake builds the last stage
+      variants: |
+        [
+          {"name": "release", "tag": "{version}", "scan": true,
+           "test": "sh .github/scripts/smoke-test.sh \"$IMAGE_REF\""}
+        ]

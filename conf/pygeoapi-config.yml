@@ -3,10 +3,15 @@
 # ${VAR:-default} values are read from the environment by pygeoapi
 
 server:
+  # only used by the development server (pygeoapi serve); in the image, uWSGI
+  # listens on port 8000 with the uwsgi protocol (/var/lib/uwsgi/uwsgi.conf)
   bind:
     host: 0.0.0.0
     port: 8000
-  url: ${PYGEOAPI_SERVER_URL:-http://localhost:8000}
+  # public URL, the base of every link pygeoapi generates (it does not read
+  # Host or X-Forwarded-* headers): the address clients use to reach nginx,
+  # including a subpath, if any
+  url: ${PYGEOAPI_SERVER_URL:-http://localhost:8080}
   mimetype: application/json; charset=UTF-8
   encoding: utf-8
   languages:
