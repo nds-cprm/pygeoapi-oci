@@ -5,12 +5,9 @@
 name: Docker Image CI
 
 on:
-  # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal tags
+  # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal tags. There is no
+  # scheduled rebuild: a new base image invalidates every layer, so every build started by gdal-oci is a full one
   workflow_dispatch:
-  # monthly rebuild (03:00 UTC on day 1), in case the base image was not republished: the locks are pinned,
-  # but the dependencies of the extras are not (see TODO.md), so they get their fixes here
-  schedule:
-    - cron: "0 3 1 * *"
   pull_request:
     branches: [main]
 
@@ -38,8 +35,6 @@ jobs:
       # the version of the build is the default of ARG PYGEOAPI_VERSION (lock in requirements/pygeoapi/)
       version-arg: PYGEOAPI_VERSION
       push: ${{ github.event_name != 'pull_request' }}
-      # scheduled rebuilds ignore the layer cache (a new base image already invalidates every layer)
-      no-cache: ${{ github.event_name == 'schedule' }}
       labels: |
         org.opencontainers.image.title=pygeoapi
         org.opencontainers.image.description=Implementação OCI de pygeoapi
