@@ -154,7 +154,8 @@ EXPOSE 8000
 
 # uWSGI ping (uwsgi protocol), answered by a worker: fails if no worker is
 # serving. Only applied by Docker: Podman ignores it in OCI images and
-# Kubernetes never uses it, so Compose, Quadlet and probes call the same script
+# Kubernetes/OpenShift never use it, so Compose, podman --health-cmd and
+# probes call the same script
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD [ "healthcheck" ]
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Container health check, shared by every runtime (Dockerfile HEALTHCHECK,
-# Compose, Podman/Quadlet, Kubernetes probes): uWSGI ping (uwsgi protocol),
-# answered by a worker, so it fails if no worker is serving. When serving HTTP
-# instead (http-socket), override this file too.
+# Compose, podman --health-cmd, Kubernetes/OpenShift probes): uWSGI ping
+# (uwsgi protocol), answered by a worker, so it fails if no worker is serving.
+# When serving HTTP instead (http-socket), override this file too.
 # Nagios exit codes (2 = critical) are mapped to 1, as Docker reserves 2.
 uwsgi --socket 127.0.0.1:8000 --nagios || exit 1
