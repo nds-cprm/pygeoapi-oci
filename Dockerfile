@@ -128,6 +128,13 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
 
 FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-${BASE_DATE}
 
+# the base this image was built on: its tags (<PYGEOAPI_VERSION>, and the dated
+# one) do not say, and a build may override GDAL_VERSION or BASE_DATE
+ARG GDAL_VERSION
+ARG PYTHON_VERSION
+ARG BASE_DATE
+LABEL org.opencontainers.image.base.name="docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-${BASE_DATE}"
+
 ARG PYGEOAPI_VERSION
 
 # installs from the wheels stage only (no index): pygeoapi first, constrained to
