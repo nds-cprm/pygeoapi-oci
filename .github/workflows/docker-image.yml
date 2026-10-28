@@ -7,6 +7,8 @@ name: Docker Image CI
 on:
   # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal tags, with their
   # versions in gdal_version and python_version (pull requests build the ARG defaults of the Dockerfile).
+  # The image is Python 3.12 only (ARG PYTHON_VERSION): the locks hash only cp312 wheels, and every build
+  # publishes the same <PYGEOAPI_VERSION> tag. A dispatch for another Python is skipped.
   # The base is pinned by its dated tag (ARG BASE_DATE): without base_date, a dispatch builds the date in
   # the Dockerfile, not the tags gdal-oci has just published.
   # There is no scheduled rebuild: a new base image invalidates every layer, so every build started by
@@ -17,8 +19,9 @@ on:
         description: ndscprm/gdal GDAL version (base image tags). Empty = ARG GDAL_VERSION in the Dockerfile
         required: false
         default: ""
+      # kept so that the dispatch of gdal-oci, which sends it, is accepted; it is never passed to the build
       python_version:
-        description: ndscprm/gdal Python version (base image tags). Empty = ARG PYTHON_VERSION in the Dockerfile
+        description: ndscprm/gdal Python version of the dispatch. Only 3.12 (or empty) is built; any other is skipped
         required: false
         default: ""
       base_date:
@@ -39,6 +42,8 @@ concurrency:
 
 jobs:
   image:
+    # keep in sync with ARG PYTHON_VERSION in the Dockerfile
+    if: inputs.python_version == '' || inputs.python_version == '3.12'
     uses: nds-cprm/gdal-oci/.github/workflows/oci-image.yml@main
     permissions:
       contents: read
@@ -53,10 +58,10 @@ jobs:
       version-arg: PYGEOAPI_VERSION
       push: ${{ github.event_name != 'pull_request' }}
       # base image versions given by gdal-oci when it starts this workflow (the tags it has just published);
-      # empty lines are ignored, so without them the ARG defaults of the Dockerfile are built
+      # empty lines are ignored, so without them the ARG defaults of the Dockerfile are built. Never
+      # PYTHON_VERSION: the build always uses the ARG default (3.12)
       build-args: |
         ${{ inputs.gdal_version && format('GDAL_VERSION={0}', inputs.gdal_version) || '' }}
-        ${{ inputs.python_version && format('PYTHON_VERSION={0}', inputs.python_version) || '' }}
         ${{ inputs.base_date && format('BASE_DATE={0}', inputs.base_date) || '' }}
       labels: |
         org.opencontainers.image.title=pygeoapi

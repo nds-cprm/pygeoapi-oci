@@ -61,15 +61,25 @@ ARG PYGEOAPI_VERSION
 # pyproj looks for the proj executable, which the devel image does not have
 # (only the libproj-dev headers): PROJ_DIR and PROJ_VERSION, from pkg-config,
 # replace it.
-# Build dependencies (numpy, setuptools...) are pinned with --build-constraint
-# to the base image's versions: -c only reaches the packages being installed,
-# not the isolated environments their sdists are built in
+# Build dependencies are pinned with --build-constraint, since -c only reaches
+# the packages being installed, not the isolated environments their sdists are
+# built in: to the base image's versions (numpy, setuptools...), and to
+# requirements/build-no-binary/${PYGEOAPI_VERSION}.txt, the lock of everything
+# those environments install (Cython, meson, ninja...), with hashes, which pip
+# checks when it downloads them. That lock is generated for the NO_BINARY default
+# below: with another NO_BINARY, regenerate it, or a build dependency may go
+# unpinned
 ARG NO_BINARY=rasterio,pyproj,shapely
 
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     lock=/tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt && \
     if [ ! -f "$lock" ]; then \
         echo "no lock file for pygeoapi ${PYGEOAPI_VERSION}:" \
+            "run requirements/update-requirements.sh ${PYGEOAPI_VERSION}" >&2; \
+        exit 1; \
+    fi && \
+    if [ ! -f /tmp/requirements/build-no-binary/${PYGEOAPI_VERSION}.txt ]; then \
+        echo "no build lock for pygeoapi ${PYGEOAPI_VERSION}:" \
             "run requirements/update-requirements.sh ${PYGEOAPI_VERSION}" >&2; \
         exit 1; \
     fi && \
@@ -86,6 +96,7 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
         --require-hashes --no-deps --no-binary "${NO_BINARY}" \
         -c /tmp/base-constraints.txt --build-constraint /tmp/base-constraints.txt \
+        --build-constraint /tmp/requirements/build-no-binary/${PYGEOAPI_VERSION}.txt \
         -r "$lock"
 
 # extras, in a layer of their own: requirements/extra/${PYGEOAPI_VERSION}.txt is
@@ -111,6 +122,7 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
         --require-hashes --no-deps \
         -c /tmp/base-constraints.txt -c /tmp/pygeoapi-constraints.txt \
         --build-constraint /tmp/base-constraints.txt \
+        --build-constraint /tmp/requirements/build-no-binary/${PYGEOAPI_VERSION}.txt \
         -r "$lock"
 
 

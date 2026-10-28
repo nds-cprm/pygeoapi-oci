@@ -1,6 +1,7 @@
-# Keeps the locks (requirements/pygeoapi/ and requirements/extra/, one pair per
-# pygeoapi version) in sync and proposes the changes as a pull request; the
-# image build never resolves dependencies, it only reads the locks.
+# Keeps the locks (requirements/pygeoapi/, requirements/extra/ and
+# requirements/build-no-binary/, three per pygeoapi version) in sync and
+# proposes the changes as a pull request; the image build never resolves
+# dependencies, it only reads the locks.
 #
 # Runs on pushes to main that touch the Dockerfile:
 #   - GDAL_VERSION, PYTHON_VERSION or BASE_DATE changed (new base image):
@@ -84,12 +85,12 @@ jobs:
               title="pygeoapi ${NEW_PYGEOAPI}"
               body="${body}
 
-          - Adds \`requirements/pygeoapi/${NEW_PYGEOAPI}.txt\` and \`requirements/extra/${NEW_PYGEOAPI}.txt\` and makes ${NEW_PYGEOAPI} the default \`PYGEOAPI_VERSION\`."
+          - Adds the locks of ${NEW_PYGEOAPI} (\`requirements/{pygeoapi,extra,build-no-binary}/${NEW_PYGEOAPI}.txt\`) and makes ${NEW_PYGEOAPI} the default \`PYGEOAPI_VERSION\`."
           fi
           if [ -n "${BASE_CHANGED:-}" ]; then
               [ -n "${NEW_PYGEOAPI:-}" ] && title="${title}, regenerated locks" || title="Regenerate locks for the new base image"
               body="${body}
-          - Regenerates every lock in \`requirements/pygeoapi/\` and \`requirements/extra/\` for the new base image."
+          - Regenerates every lock in \`requirements/pygeoapi/\`, \`requirements/extra/\` and \`requirements/build-no-binary/\` for the new base image."
           fi
           body="${body}
 
@@ -99,7 +100,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
-          git add requirements/pygeoapi requirements/extra Dockerfile
+          git add requirements/pygeoapi requirements/extra requirements/build-no-binary Dockerfile
           git commit -m "$title"
           git push origin "$branch"
           gh pr create --base main --head "$branch" --title "$title" --body "$body"
