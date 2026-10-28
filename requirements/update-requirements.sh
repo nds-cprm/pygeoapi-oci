@@ -26,6 +26,15 @@
 #   requirements/update-requirements.sh requirements/pygeoapi/*          # every existing version (after a base image change)
 #   requirements/update-requirements.sh --extra 0.24.0                   # only the extras and build locks (after editing requirements.in)
 #   requirements/update-requirements.sh --extra requirements/pygeoapi/*  # the same, for every version
+#   requirements/update-requirements.sh --image <devel image> ...        # on another devel image
+#
+# --image <devel image> is the full name of the ndscprm/gdal devel image to
+# resolve on, e.g. docker.io/ndscprm/gdal:3.12.4-py3.12-devel-20261026@sha256:...
+# (the default, ARG GDAL_IMAGE_DEVEL of the Dockerfile, is a moving tag). Each
+# lock records it in its header line (... on <image>): to keep the base of the
+# existing locks, pass the image in their header; the image is then built on
+# the same base (--build-arg GDAL_IMAGE_DEVEL=... and the GDAL_IMAGE_PY of the
+# same build).
 #
 # Paths are accepted only when the file name is <version>.txt (it starts with a
 # digit); any other file is skipped with a message. --extra takes the versions
@@ -34,8 +43,8 @@
 #
 # Commit the result.
 #
-# Resolves inside the same -devel image as the wheels stage, with the base image
-# versions and date and NO_BINARY read from the Dockerfile ARG defaults, and
+# Resolves inside the devel image the wheels stage is built on (--image), with
+# NO_BINARY read from the Dockerfile ARG default, and
 # with the packages that image ships (GDAL, numpy, pyarrow, pip...) as
 # constraints, as the build does.
 # Those packages are left out of the pygeoapi and extras locks: the base image
@@ -60,11 +69,7 @@ pins() {
     sed -n 's/^\([^ #][^ ]*==[^ ]*\).*/\1/p' "$1"
 }
 
-GDAL_VERSION=$(arg GDAL_VERSION)
-PYTHON_VERSION=$(arg PYTHON_VERSION)
-BASE_DATE=$(arg BASE_DATE)
 NO_BINARY=$(arg NO_BINARY)
-IMAGE=docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel-${BASE_DATE}
 
 if [ -z "${CONTAINER_ENGINE:-}" ]; then
     if command -v podman >/dev/null 2>&1; then
@@ -84,7 +89,6 @@ resolve() {
     # machine, Docker Desktop) is needed
     "$CONTAINER_ENGINE" run --rm -i --entrypoint sh \
         -e REQUIREMENTS="$1" -e CONSTRAINTS="$2" -e KEEP_BASE="${3:-}" \
-        -e PYTHON_VERSION="$PYTHON_VERSION" \
         "$IMAGE" -c '
             set -e
             cat > /tmp/hashes.py
@@ -103,7 +107,6 @@ resolve() {
                 /tmp/constraints.txt
         ' <<'EOF'
 import json
-import os
 import re
 import sys
 import urllib.request
@@ -125,7 +128,8 @@ packages = sorted(
     for item in report['install']
     if normalize(item['metadata']['name']) not in excluded
 )
-cpython = 'cp' + os.environ['PYTHON_VERSION'].replace('.', '')
+# the Python of the image (cp312), the only one whose wheels the locks hash
+cpython = f'cp{sys.version_info.major}{sys.version_info.minor}'
 
 
 def wanted(filename):
@@ -252,12 +256,22 @@ $(pins "requirements/extra/$version.txt")")
 
 mkdir -p requirements/pygeoapi requirements/extra requirements/build-no-binary
 
-# --extra, anywhere in the arguments: only the extras and build locks
+# options, anywhere in the arguments: --image <devel image> and --extra (only
+# the extras and build locks)
 extra_only=
+IMAGE=$(arg GDAL_IMAGE_DEVEL)
+image_next=
 for argument in "$@"; do
     shift
+    if [ -n "$image_next" ]; then
+        IMAGE=$argument
+        image_next=
+        continue
+    fi
     case $argument in
         --extra) extra_only=yes ;;
+        --image) image_next=yes ;;
+        --image=*) IMAGE=${argument#--image=} ;;
         -*)
             echo "unknown option $argument" >&2
             exit 1
@@ -265,6 +279,14 @@ for argument in "$@"; do
         *) set -- "$@" "$argument" ;;
     esac
 done
+
+case $IMAGE in
+    docker.io/ndscprm/gdal:*-devel*) ;;
+    *)
+        echo "--image must be a docker.io/ndscprm/gdal devel image: '$IMAGE'" >&2
+        exit 1
+        ;;
+esac
 
 if [ $# -eq 0 ]; then
     set -- "$(arg PYGEOAPI_VERSION)"

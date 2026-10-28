@@ -1,49 +1,76 @@
 # Builds, tests, scans and publishes ndscprm/pygeoapi with the reusable workflow of the base image
 # (README of gdal-oci, "Workflow reutilizável"): native runners per architecture (amd64 and arm64, so
 # rasterio, pyproj and shapely are compiled without emulation), push by digest, tags only after the tests
-# and scans of both architectures. Pull requests are only built and tested (no push, no secrets).
+# and scans of both architectures.
 name: Docker Image CI
 
 on:
-  # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal tags, with their
-  # versions in gdal_version and python_version (pull requests build the ARG defaults of the Dockerfile).
-  # The image is Python 3.12 only (ARG PYTHON_VERSION): the locks hash only cp312 wheels, and every build
-  # publishes the same <PYGEOAPI_VERSION> tag. A dispatch for another Python is skipped.
-  # The base is pinned by its dated tag (ARG BASE_DATE): without base_date, a dispatch builds the date in
-  # the Dockerfile, not the tags gdal-oci has just published.
-  # There is no scheduled rebuild: a new base image invalidates every layer, so every build started by
-  # gdal-oci is a full one
+  # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal images, with their
+  # full names. There is no scheduled rebuild: a new base image invalidates every layer, so every build
+  # started by gdal-oci is a full one
   workflow_dispatch:
+    # full names of the ndscprm/gdal images to build on (the CI of gdal-oci sends the dated tags it has just
+    # published, pinned by digest: <tag>-<YYYYMMDD>@sha256:...). Every derived image declares the same
+    # three inputs, so gdal-oci sends the same set to all of them; this one uses devel and py (image_nopy
+    # is accepted and ignored). Empty = the ARG default of the Dockerfile (a moving tag)
     inputs:
-      gdal_version:
-        description: ndscprm/gdal GDAL version (base image tags). Empty = ARG GDAL_VERSION in the Dockerfile
+      image_devel:
+        description: ndscprm/gdal devel image (GDAL_IMAGE_DEVEL). Empty = Dockerfile default
         required: false
         default: ""
-      # kept so that the dispatch of gdal-oci, which sends it, is accepted; it is never passed to the build
-      python_version:
-        description: ndscprm/gdal Python version of the dispatch. Only 3.12 (or empty) is built; any other is skipped
+      image_py:
+        description: ndscprm/gdal image with Python (GDAL_IMAGE_PY). Empty = Dockerfile default
         required: false
         default: ""
-      base_date:
-        description: ndscprm/gdal dated tag suffix (YYYYMMDD or YYYYMMDD.N). Empty = ARG BASE_DATE in the Dockerfile
+      image_nopy:
+        description: ndscprm/gdal image without Python. Not used here
         required: false
         default: ""
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
 
-# one publishing build at a time (never cancelled); a new commit cancels the build of the previous one in
-# the same pull request
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
+  # the inputs must name ndscprm/gdal images (a manual run could otherwise build on any image), and only
+  # Python 3.12 images are built: the locks hash only cp312 wheels, and every build publishes the same
+  # <PYGEOAPI_VERSION> tag. A dispatch with images of another Python is skipped (build=false)
+  check:
+    runs-on: ubuntu-24.04
+    permissions: {}
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        env:
+          IMAGES: ${{ inputs.image_devel }} ${{ inputs.image_py }}
+          # keep in sync with the Python of the ARG defaults in the Dockerfile
+          PYTHON: py3.12
+        run: |
+          build=true
+          for image in $IMAGES; do
+              case $image in
+                  docker.io/ndscprm/gdal:*) echo "base image: $image" ;;
+                  *)
+                      echo "::error::not a docker.io/ndscprm/gdal image: $image"
+                      exit 1
+                      ;;
+              esac
+              # the tag carries the Python: <gdal>-py3.12[-devel][-<date>][@sha256:...]
+              if ! echo "${image#*:}" | grep -Eq -- "-${PYTHON//./\\.}(\$|[-@])"; then
+                  echo "::notice::not a ${PYTHON} image, skipped: $image"
+                  build=false
+              fi
+          done
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   image:
-    # keep in sync with ARG PYTHON_VERSION in the Dockerfile
-    if: inputs.python_version == '' || inputs.python_version == '3.12'
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    # one publishing build at a time (never cancelled). On the job, not the workflow, so that a dispatch
+    # skipped by the if above never joins the group: a group keeps one pending run, and a newer one cancels it
+    concurrency:
+      group: ${{ github.workflow }}-publish
+      cancel-in-progress: false
     uses: nds-cprm/gdal-oci/.github/workflows/oci-image.yml@main
     permissions:
       contents: read
@@ -56,13 +83,11 @@ jobs:
       image: docker.io/ndscprm/pygeoapi
       # the version of the build is the default of ARG PYGEOAPI_VERSION (lock in requirements/pygeoapi/)
       version-arg: PYGEOAPI_VERSION
-      push: ${{ github.event_name != 'pull_request' }}
-      # base image versions given by gdal-oci when it starts this workflow (the tags it has just published);
-      # empty lines are ignored, so without them the ARG defaults of the Dockerfile are built. Never
-      # PYTHON_VERSION: the build always uses the ARG default (3.12)
+      # base images given by gdal-oci when it starts this workflow (the images it has just published);
+      # empty lines are ignored, so without them the ARG defaults of the Dockerfile are built
       build-args: |
-        ${{ inputs.gdal_version && format('GDAL_VERSION={0}', inputs.gdal_version) || '' }}
-        ${{ inputs.base_date && format('BASE_DATE={0}', inputs.base_date) || '' }}
+        ${{ inputs.image_devel && format('GDAL_IMAGE_DEVEL={0}', inputs.image_devel) || '' }}
+        ${{ inputs.image_py && format('GDAL_IMAGE_PY={0}', inputs.image_py) || '' }}
       labels: |
         org.opencontainers.image.title=pygeoapi
         org.opencontainers.image.description=Implementação OCI de pygeoapi

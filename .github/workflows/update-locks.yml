@@ -3,12 +3,21 @@
 # proposes the changes as a pull request; the image build never resolves
 # dependencies, it only reads the locks.
 #
-# Runs on pushes to main that touch the Dockerfile:
-#   - GDAL_VERSION, PYTHON_VERSION or BASE_DATE changed (new base image):
-#     regenerates every lock, since they are resolved against the packages the
-#     base image ships
-#   - the latest pygeoapi on PyPI has no lock yet: generates it and makes it the
-#     default PYGEOAPI_VERSION
+# The base image of the locks is the devel image in their header line (... on
+# <image>), read from the lock of the default PYGEOAPI_VERSION; the ARG defaults
+# of the Dockerfile are moving tags, not the base of the locks.
+#
+# Runs:
+#   - manually, with image_devel (required, the full name of a ndscprm/gdal
+#     devel image, ideally the dated tag with its digest): regenerates every lock
+#     on it if the locks are on another image, since they are resolved against
+#     the packages it ships. This is how the base image of the locks is changed
+#   - on pushes to main that touch the Dockerfile: if the GDAL_IMAGE_DEVEL or
+#     GDAL_IMAGE_PY default changed (another GDAL or Python), fails, asking for a
+#     manual run with the new devel image
+#   - both: if the latest pygeoapi on PyPI has no lock yet, generates it on the
+#     image of the locks (or the given one) and makes it the default
+#     PYGEOAPI_VERSION
 #
 # Requires "Allow GitHub Actions to create and approve pull requests" in the
 # repository (or organization) settings, under Actions > General.
@@ -18,6 +27,11 @@ on:
   push:
     branches: [main]
     paths: [Dockerfile]
+  workflow_dispatch:
+    inputs:
+      image_devel:
+        description: ndscprm/gdal devel image to resolve every lock on, e.g. docker.io/ndscprm/gdal:3.12.4-py3.12-devel-20261026@sha256:...
+        required: true
 
 permissions:
   contents: write
@@ -38,26 +52,50 @@ jobs:
         with:
           fetch-depth: 0
 
+      # LOCK_IMAGE: the input of a manual run, or the devel image the current locks were resolved on
       - name: Regenerate every lock if the base image changed
+        env:
+          INPUT: ${{ inputs.image_devel }}
         run: |
-          base_args() {
-              grep -E '^ARG (GDAL_VERSION|PYTHON_VERSION|BASE_DATE)=' "$@"
-          }
-          # first push of the branch: nothing to compare against
-          if [ "$BEFORE" = 0000000000000000000000000000000000000000 ] ||
-              ! git cat-file -e "$BEFORE:Dockerfile" 2>/dev/null; then
-              echo "no previous Dockerfile to compare: regenerating every lock"
-              changed=yes
-          elif [ "$(git show "$BEFORE:Dockerfile" | base_args)" != "$(base_args Dockerfile)" ]; then
-              echo "base image changed:"
-              git show "$BEFORE:Dockerfile" | base_args | sed 's/^/  before: /'
-              base_args Dockerfile | sed 's/^/  now:    /'
-              changed=yes
+          version=$(sed -n 's/^ARG PYGEOAPI_VERSION=//p' Dockerfile)
+          # image of the current locks, from the header line of the default version
+          locked=$(sed -n '2s/.* on \(docker\.io\/ndscprm\/gdal:[^ ]*\)$/\1/p' "requirements/pygeoapi/$version.txt")
+          echo "locks of pygeoapi $version resolved on: ${locked:-unknown}"
+          if [ -n "$INPUT" ]; then
+              case $INPUT in
+                  docker.io/ndscprm/gdal:*-devel*) ;;
+                  *)
+                      echo "::error::not a docker.io/ndscprm/gdal devel image: $INPUT"
+                      exit 1
+                      ;;
+              esac
+              image=$INPUT
+              if [ "$image" != "$locked" ]; then
+                  echo "regenerating every lock on $image"
+                  requirements/update-requirements.sh --image "$image" requirements/pygeoapi/*
+                  echo "BASE_CHANGED=yes" >> "$GITHUB_ENV"
+              else
+                  echo "the locks are already on $image"
+              fi
+          else
+              image=$locked
+              base_args() { grep -E '^ARG (GDAL_IMAGE_DEVEL|GDAL_IMAGE_PY)=' "$@" || :; }
+              # nothing to compare against: first push of the branch, or a Dockerfile from
+              # before these ARGs (GDAL_VERSION/PYTHON_VERSION/BASE_DATE)
+              previous=
+              if [ "$BEFORE" != 0000000000000000000000000000000000000000 ] &&
+                  git cat-file -e "$BEFORE:Dockerfile" 2>/dev/null; then
+                  previous=$(git show "$BEFORE:Dockerfile" | base_args)
+              fi
+              if [ -n "$previous" ] && [ "$previous" != "$(base_args Dockerfile)" ]; then
+                  echo "base image changed:"
+                  git show "$BEFORE:Dockerfile" | base_args | sed 's/^/  before: /'
+                  base_args Dockerfile | sed 's/^/  now:    /'
+                  echo "::error::the base image defaults changed: run this workflow manually with the new devel image (dated tag and digest) to regenerate the locks"
+                  exit 1
+              fi
           fi
-          if [ "${changed:-}" = yes ]; then
-              requirements/update-requirements.sh requirements/pygeoapi/*
-              echo "BASE_CHANGED=yes" >> "$GITHUB_ENV"
-          fi
+          echo "LOCK_IMAGE=$image" >> "$GITHUB_ENV"
 
       - name: Lock the latest pygeoapi and make it the default
         run: |
@@ -65,7 +103,7 @@ jobs:
           current=$(sed -n 's/^ARG PYGEOAPI_VERSION=//p' Dockerfile)
           echo "latest pygeoapi: $latest, default: $current"
           if [ ! -f "requirements/pygeoapi/$latest.txt" ]; then
-              requirements/update-requirements.sh "$latest"
+              requirements/update-requirements.sh --image "$LOCK_IMAGE" "$latest"
               sed -i "s/^ARG PYGEOAPI_VERSION=.*/ARG PYGEOAPI_VERSION=$latest/" Dockerfile
               echo "NEW_PYGEOAPI=$latest" >> "$GITHUB_ENV"
           fi
@@ -90,7 +128,7 @@ jobs:
           if [ -n "${BASE_CHANGED:-}" ]; then
               [ -n "${NEW_PYGEOAPI:-}" ] && title="${title}, regenerated locks" || title="Regenerate locks for the new base image"
               body="${body}
-          - Regenerates every lock in \`requirements/pygeoapi/\`, \`requirements/extra/\` and \`requirements/build-no-binary/\` for the new base image."
+          - Regenerates every lock in \`requirements/pygeoapi/\`, \`requirements/extra/\` and \`requirements/build-no-binary/\` on \`${LOCK_IMAGE}\`."
           fi
           body="${body}
 
