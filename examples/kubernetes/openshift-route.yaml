@@ -1,0 +1,19 @@
+# OpenShift only: publishes the nginx Service through the router, with TLS
+# terminated there (edge) and HTTP redirected to HTTPS. Set PYGEOAPI_SERVER_URL
+# in pygeoapi.yaml to https://<host>; without spec.host, OpenShift generates
+# one (oc get route pygeoapi).
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: pygeoapi
+  labels:
+    app.kubernetes.io/name: nginx
+spec:
+  to:
+    kind: Service
+    name: nginx
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

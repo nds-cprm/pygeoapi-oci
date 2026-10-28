@@ -7,6 +7,8 @@ A imagem fala o **protocolo uwsgi** (não HTTP) na porta 8000. O exemplo [`nginx
 | `pygeoapi` | `ndscprm/pygeoapi` | uWSGI na porta 8000 (protocolo uwsgi), raiz somente leitura, com `tmpfs` em `/tmp` (nss_wrapper) e em `/var/lib/pygeoapi` (OpenAPI gerado a cada início) |
 | `nginx` | `nginxinc/nginx-unprivileged` | HTTP na porta 8080 do host, sem root e com raiz somente leitura; configuração em [`nginx/conf/nginx/nginx.conf`](nginx/conf/nginx/nginx.conf) |
 
+Para Kubernetes e OpenShift, veja [`kubernetes/`](kubernetes/README.md).
+
 O nginx só sobe depois que o healthcheck do pygeoapi passa. O healthcheck é declarado no Compose de propósito: o Podman ignora o `HEALTHCHECK` de imagens no formato OCI.
 
 ## Uso
@@ -37,9 +39,25 @@ podman healthcheck run pygeoapi   # 0 = saudável; também aparece em podman ps
 - O Podman agenda as verificações periódicas com timers do systemd. Sem systemd, como em alguns containers de CI, só o `podman healthcheck run` funciona.
 - Num build local com `podman build`, use `--format docker` para manter o `HEALTHCHECK` na imagem. As imagens publicadas pelo CI, geradas pelo BuildKit, já o têm.
 
+## Sistema de arquivos somente leitura
+
+A imagem funciona com a raiz somente leitura, desde que dois caminhos sejam graváveis:
+
+- `/tmp`: o nss_wrapper da imagem base cria ali o passwd virtual do UID, que não está no `/etc/passwd`. Sem ele, o container sai logo no início com `mktemp: failed to create directory ... /tmp/nss_wrapper.XXXXXX`.
+- `/var/lib/pygeoapi`: o OpenAPI, gerado a cada início (`PYGEOAPI_OPENAPI`). Sem ele, o container sai com `Could not open file '/var/lib/pygeoapi/openapi.yml'`.
+
+| Runtime | Como |
+|---|---|
+| Docker | `docker run --read-only --tmpfs /tmp --tmpfs /var/lib/pygeoapi ...` |
+| Podman | `podman run --read-only --tmpfs /var/lib/pygeoapi ...` (o Podman monta `/tmp` sozinho com `--read-only`) |
+| Compose | `read_only: true` e `tmpfs:` com os dois caminhos, como em [`nginx/docker-compose.yaml`](nginx/docker-compose.yaml) |
+| Kubernetes e OpenShift | `readOnlyRootFilesystem: true` e um `emptyDir` em cada caminho, como em [`kubernetes/pygeoapi.yaml`](kubernetes/pygeoapi.yaml) |
+
+Os dois caminhos podem ser `tmpfs` ou volumes vazios: nada neles precisa sobreviver a um reinício. Um volume nomeado em `/var/lib/pygeoapi` também funciona, e o Podman o cria com dono `1000:0`. O teste de fumaça do CI roda a imagem assim, com `--read-only` e um UID arbitrário (`--user 12345:0`).
+
 ## Porta
 
-O uWSGI escuta na porta de `PYGEOAPI_PORT` (padrão 8000), lida também pelo `healthcheck`. Ela pode ser trocada no build (`--build-arg PYGEOAPI_PORT=...`, que também muda o `EXPOSE`) ou ao rodar (`-e PYGEOAPI_PORT=...`). O `upstream` do [`nginx.conf`](nginx/conf/nginx/nginx.conf) precisa apontar para a mesma porta.
+O uWSGI escuta na porta de `PYGEOAPI_LISTEN_PORT` (padrão 8000), lida também pelo `healthcheck`. Ela pode ser trocada no build (`--build-arg PYGEOAPI_LISTEN_PORT=...`, que também muda o `EXPOSE`) ou ao rodar (`-e PYGEOAPI_LISTEN_PORT=...`). O `upstream` do [`nginx.conf`](nginx/conf/nginx/nginx.conf) precisa apontar para a mesma porta.
 
 ## URL pública
 
