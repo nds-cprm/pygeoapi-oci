@@ -1,0 +1,6 @@
+# extra dependencies (providers, application server), edited by hand with exact
+# versions. After a change, run requirements/update-requirements.sh extra: it
+# writes requirements.txt, the lock the build installs, with these packages,
+# the dependencies only they pull in and their hashes
+opensearch-dsl==2.1.0
+uWSGI==2.0.31

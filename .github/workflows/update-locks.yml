@@ -7,6 +7,8 @@
 #     base image ships
 #   - the latest pygeoapi on PyPI has no lock yet: generates it and makes it the
 #     default PYGEOAPI_VERSION
+#   - after either: regenerates requirements/extra/requirements.txt, resolved
+#     against the lock of the default PYGEOAPI_VERSION
 #
 # Requires "Allow GitHub Actions to create and approve pull requests" in the
 # repository (or organization) settings, under Actions > General.
@@ -68,6 +70,10 @@ jobs:
               echo "NEW_PYGEOAPI=$latest" >> "$GITHUB_ENV"
           fi
 
+      - name: Regenerate the extras lock
+        if: env.BASE_CHANGED == 'yes' || env.NEW_PYGEOAPI != ''
+        run: requirements/update-requirements.sh extra
+
       - name: Open a pull request with the changes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -90,15 +96,19 @@ jobs:
               body="${body}
           - Regenerates every lock in \`requirements/pygeoapi/\` for the new base image."
           fi
+          if ! git diff --quiet requirements/extra; then
+              body="${body}
+          - Regenerates \`requirements/extra/requirements.txt\` against the lock of the default \`PYGEOAPI_VERSION\`."
+          fi
           body="${body}
 
-          Build the image before merging: requirements/extra/requirements.txt is shared by every version and must still resolve against the new locks."
+          Build the image before merging: requirements/extra/requirements.txt is shared by every version and must still install with each lock."
 
           branch="update-locks/${GITHUB_SHA::7}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
-          git add requirements/pygeoapi Dockerfile
+          git add requirements/pygeoapi requirements/extra Dockerfile
           git commit -m "$title"
           git push origin "$branch"
           gh pr create --base main --head "$branch" --title "$title" --body "$body"

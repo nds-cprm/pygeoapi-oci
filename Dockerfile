@@ -88,16 +88,20 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
         -c /tmp/base-constraints.txt --build-constraint /tmp/base-constraints.txt \
         -r "$lock"
 
-# extras, in a layer of their own: also constrained to the versions in the
-# lock, so they cannot move any pygeoapi dependency. Its hashes are stripped
-# first: in a constraints file they would turn hash-checking on for the extras
-# too, which have none yet
+# extras, in a layer of their own: requirements/extra/requirements.txt is their
+# lock (generated from requirements.in), hash-checked like the pygeoapi one. It
+# leaves out what the pygeoapi lock already has, so --no-deps fetches only the
+# packages the extras add and never the shared ones again. The pygeoapi lock
+# goes in as constraints, without its hashes (they would turn on hash-checking
+# for packages this step does not fetch), so an extra cannot move any of its
+# versions
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     pip freeze --all > /tmp/base-constraints.txt && \
     sed -n 's/^\([^ #][^ ]*==[^ ]*\).*/\1/p' \
         /tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt \
         > /tmp/pygeoapi-constraints.txt && \
     LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
+        --require-hashes --no-deps \
         -c /tmp/base-constraints.txt -c /tmp/pygeoapi-constraints.txt \
         --build-constraint /tmp/base-constraints.txt \
         -r /tmp/requirements/extra/requirements.txt
@@ -109,9 +113,10 @@ ARG PYGEOAPI_VERSION
 
 # installs from the wheels stage only (no index): pygeoapi first, constrained to
 # this image's own packages; then the extras, constrained to everything already
-# installed, so they can only add packages, never change one. Hashes were
-# checked when the wheels stage downloaded each file; they are stripped here,
-# since the wheels built from source there have no PyPI hash to match
+# installed, so they can only add packages, never change one. Both resolve
+# their dependencies, so an incomplete lock fails here. Hashes were checked
+# when the wheels stage downloaded each file; they are stripped here, since the
+# wheels built from source there (NO_BINARY, uWSGI) have no PyPI hash to match
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
     pip freeze --all > /tmp/base-constraints.txt && \
@@ -124,8 +129,10 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
     pip freeze --all > /tmp/installed-constraints.txt && \
+    sed -n 's/^\([^ #][^ ]*==[^ ]*\).*/\1/p' \
+        /tmp/requirements/extra/requirements.txt > /tmp/extra-requirements.txt && \
     pip install --no-cache-dir --no-index --find-links /wheels \
-        -c /tmp/installed-constraints.txt -r /tmp/requirements/extra/requirements.txt
+        -c /tmp/installed-constraints.txt -r /tmp/extra-requirements.txt
 
 # pyproj built from source has no PROJ data of its own and, unlike libproj
 # (which osgeo and rasterio use), does not look in /usr/share/proj by default;

@@ -3,6 +3,7 @@
 *
 !requirements/
 requirements/*.sh
+requirements/extra/*.in
 !conf/
 !docker/
 !docker-entrypoint.d/
