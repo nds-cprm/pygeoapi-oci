@@ -4,7 +4,8 @@
 # (arbitrary UID, read-only root filesystem with tmpfs on /tmp and /var/lib/pygeoapi) behind nginx with
 # the configuration of examples/nginx (port 8000 speaks the uwsgi protocol, not HTTP), waits for the
 # healthcheck, requests the main endpoints and a local OGC schema through nginx, checks that the links
-# use PYGEOAPI_SERVER_URL and that the geospatial modules use the GDAL and PROJ of the base image.
+# use PYGEOAPI_SERVER_URL and that the geospatial modules use the GDAL, PROJ and GEOS of the base image,
+# with no bundled copies of them.
 set -eu
 
 IMAGE=${1:?usage: $0 <image>}
@@ -64,22 +65,39 @@ get '/?f=json' | grep -q "\"href\": *\"$SERVER_URL/conformance" || fail "links d
 echo "## native libraries"
 "$DOCKER" exec -i "$NAME" python3 - << 'EOF' || fail "native libraries"
 import sys
+import sysconfig
+from pathlib import Path
 
 import pyproj
 import rasterio
 import shapely
-from osgeo import gdal
+from osgeo import gdal, ogr
 
-# compiled from source against the base image (NO_BINARY): no bundled copies of the libraries
+# compiled from source against the base image (NO_BINARY): the same GDAL, PROJ and GEOS as osgeo
+gdal_geos = '.'.join(
+    str(v) for v in (ogr.GetGEOSVersionMajor(), ogr.GetGEOSVersionMinor(), ogr.GetGEOSVersionMicro())
+)
 versions = {
     'GDAL (osgeo / rasterio)': (gdal.__version__, rasterio.__gdal_version__),
     'PROJ (rasterio / pyproj)': (rasterio.__proj_version__, pyproj.proj_version_str),
+    'GEOS (osgeo / shapely)': (gdal_geos, shapely.geos_version_string),
 }
-print('GEOS (shapely):', shapely.geos_version_string)
+failed = False
 for name, (a, b) in versions.items():
     print(f'{name}: {a} / {b}')
     if a != b:
-        sys.exit(f'{name} differ')
+        print(f'{name} differ', file=sys.stderr)
+        failed = True
+
+# and with no bundled copies of the libraries, which only binary wheels from PyPI bring
+# (<package>.libs next to the package); numpy.libs comes from the base image
+bundled = sorted(p.name for p in Path(sysconfig.get_path('purelib')).glob('*.libs'))
+print('bundled libraries:', ' '.join(bundled) or 'none')
+for module in (rasterio, pyproj, shapely):
+    if f'{module.__name__}.libs' in bundled:
+        print(f'{module.__name__} is a binary wheel from PyPI, not built from source', file=sys.stderr)
+        failed = True
+sys.exit(failed)
 EOF
 
 echo "OK"
