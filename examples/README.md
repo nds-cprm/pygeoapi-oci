@@ -21,6 +21,26 @@ Para testar uma imagem construída localmente: `PYGEOAPI_IMAGE=pygeoapi-oci dock
 
 Sem configuração própria, o pygeoapi usa a padrão da imagem, sem coleções. Para publicar as suas, descomente o `volumes:` do serviço `pygeoapi` e crie `nginx/conf/pygeoapi/config.yml` (o pygeoapi substitui `${VAR:-padrão}` pelas variáveis de ambiente). Os dados referenciados pela configuração também precisam ser montados, ou ficar num banco acessível pela rede.
 
+## Podman sem Compose
+
+O Podman ignora o `HEALTHCHECK` de imagens no formato OCI, que é o padrão do `podman build`. Declare o healthcheck no `podman run`, com o mesmo script e os mesmos tempos da imagem:
+
+```sh
+podman run -d --name pygeoapi --read-only --tmpfs /var/lib/pygeoapi \
+    --health-cmd healthcheck --health-interval 30s --health-timeout 5s \
+    --health-start-period 15s --health-retries 3 \
+    docker.io/ndscprm/pygeoapi:0.24.0
+podman healthcheck run pygeoapi   # 0 = saudável; também aparece em podman ps
+```
+
+- Com `--read-only`, o Podman monta sozinho um `tmpfs` em `/tmp`, onde o nss_wrapper cria o passwd virtual. O Docker não faz isso, então lá é preciso acrescentar `--tmpfs /tmp`.
+- O Podman agenda as verificações periódicas com timers do systemd. Sem systemd, como em alguns containers de CI, só o `podman healthcheck run` funciona.
+- Num build local com `podman build`, use `--format docker` para manter o `HEALTHCHECK` na imagem. As imagens publicadas pelo CI, geradas pelo BuildKit, já o têm.
+
+## Porta
+
+O uWSGI escuta na porta de `PYGEOAPI_PORT` (padrão 8000), lida também pelo `healthcheck`. Ela pode ser trocada no build (`--build-arg PYGEOAPI_PORT=...`, que também muda o `EXPOSE`) ou ao rodar (`-e PYGEOAPI_PORT=...`). O `upstream` do [`nginx.conf`](nginx/conf/nginx/nginx.conf) precisa apontar para a mesma porta.
+
 ## URL pública
 
 O pygeoapi monta todos os links (JSON, HTML, OpenAPI) a partir do `server.url` da configuração, que na imagem vem de `PYGEOAPI_SERVER_URL`. Ele **não** lê o `Host` nem os cabeçalhos `X-Forwarded-*` do pedido, então a variável precisa ser o endereço que o cliente usa:

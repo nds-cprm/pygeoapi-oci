@@ -168,8 +168,13 @@ RUN mkdir -p /var/lib/pygeoapi && \
 # OpenShift assigns. Group 0 is the one that can write /var/lib/pygeoapi
 USER 1000:0
 
-# uwsgi protocol, not HTTP: put nginx (uwsgi_pass) in front, see examples/
-EXPOSE 8000
+# uwsgi protocol, not HTTP: put nginx (uwsgi_pass) in front, see examples/.
+# The port is set only here: uwsgi.conf and the healthcheck read PYGEOAPI_PORT,
+# which can also be changed at run time (-e PYGEOAPI_PORT=...); nginx (the
+# upstream in examples/) has to point at the same one
+ARG PYGEOAPI_PORT=8000
+ENV PYGEOAPI_PORT=${PYGEOAPI_PORT}
+EXPOSE ${PYGEOAPI_PORT}
 
 # uWSGI ping (uwsgi protocol), answered by a worker: fails if no worker is
 # serving. Only applied by Docker: Podman ignores it in OCI images and

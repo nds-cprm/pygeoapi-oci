@@ -3,5 +3,6 @@
 # Compose, podman --health-cmd, Kubernetes/OpenShift probes): uWSGI ping
 # (uwsgi protocol), answered by a worker, so it fails if no worker is serving.
 # When serving HTTP instead (http-socket), override this file too.
+# The port is PYGEOAPI_PORT, the one uwsgi.conf listens on.
 # Nagios exit codes (2 = critical) are mapped to 1, as Docker reserves 2.
-uwsgi --socket 127.0.0.1:8000 --nagios || exit 1
+uwsgi --socket "127.0.0.1:${PYGEOAPI_PORT:-8000}" --nagios || exit 1
