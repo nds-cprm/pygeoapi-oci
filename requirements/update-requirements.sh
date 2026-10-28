@@ -13,13 +13,15 @@
 # The build picks both files by PYGEOAPI_VERSION; each version keeps its own,
 # so locking a new version never changes what an existing one installs.
 #
-#   requirements/update-requirements.sh                         # PYGEOAPI_VERSION from the Dockerfile
-#   requirements/update-requirements.sh 0.25.0                  # one or more versions
-#   requirements/update-requirements.sh requirements/pygeoapi/*  # every existing version (after a base image change)
-#   requirements/update-requirements.sh extra                   # only the extras of every version (after editing requirements.in)
+#   requirements/update-requirements.sh                                  # PYGEOAPI_VERSION from the Dockerfile
+#   requirements/update-requirements.sh 0.25.0                           # one or more versions
+#   requirements/update-requirements.sh requirements/pygeoapi/*          # every existing version (after a base image change)
+#   requirements/update-requirements.sh --extra 0.24.0                   # only the extras lock (after editing requirements.in)
+#   requirements/update-requirements.sh --extra requirements/pygeoapi/*  # only the extras locks of every version
 #
 # Paths are accepted only when the file name is <version>.txt (it starts with a
-# digit); any other file is skipped with a message.
+# digit); any other file is skipped with a message. --extra takes the versions
+# the same way and leaves their pygeoapi locks untouched, which must exist.
 #
 # Commit the result.
 #
@@ -173,6 +175,20 @@ lock_extra() {
 
 mkdir -p requirements/pygeoapi requirements/extra
 
+# --extra, anywhere in the arguments: only the extras locks
+extra_only=
+for argument in "$@"; do
+    shift
+    case $argument in
+        --extra) extra_only=yes ;;
+        -*)
+            echo "unknown option $argument" >&2
+            exit 1
+            ;;
+        *) set -- "$@" "$argument" ;;
+    esac
+done
+
 if [ $# -eq 0 ]; then
     set -- "$(arg PYGEOAPI_VERSION)"
 fi
@@ -182,14 +198,6 @@ for version in "$@"; do
     # any other file, such as requirements/extra/requirements.in, is skipped, so
     # globs over requirements/ are safe too
     case $version in
-        extra)
-            for base_lock in requirements/pygeoapi/[0-9]*.txt; do
-                [ -f "$base_lock" ] || continue
-                base_lock=${base_lock##*/}
-                lock_extra "${base_lock%.txt}"
-            done
-            continue
-            ;;
         */*|*.txt)
             case ${version##*/} in
                 [0-9]*.txt)
@@ -203,5 +211,13 @@ for version in "$@"; do
             esac
             ;;
     esac
-    lock "$version"
+    if [ -z "$extra_only" ]; then
+        lock "$version"
+    elif [ -f "requirements/pygeoapi/$version.txt" ]; then
+        lock_extra "$version"
+    else
+        echo "no lock file for pygeoapi $version: run" \
+            "requirements/update-requirements.sh $version first" >&2
+        exit 1
+    fi
 done

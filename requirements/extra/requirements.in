@@ -1,7 +1,7 @@
 # extra dependencies (providers, application server), edited by hand with exact
-# versions. After a change, run requirements/update-requirements.sh extra: it
-# writes <version>.txt next to this file for every pygeoapi version with a lock,
-# the lock the build installs, with these packages, the dependencies only they
-# pull in and their hashes
+# versions. After a change, run requirements/update-requirements.sh --extra
+# with the pygeoapi versions (or requirements/pygeoapi/* for all): it writes
+# <version>.txt next to this file, the lock the build installs, with these
+# packages, the dependencies only they pull in and their hashes
 opensearch-dsl==2.1.0
 uWSGI==2.0.31
