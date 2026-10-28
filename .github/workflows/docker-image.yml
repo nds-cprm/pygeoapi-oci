@@ -7,6 +7,8 @@ name: Docker Image CI
 on:
   # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal tags, with their
   # versions in gdal_version and python_version (pull requests build the ARG defaults of the Dockerfile).
+  # The base is pinned by its dated tag (ARG BASE_DATE): without base_date, a dispatch builds the date in
+  # the Dockerfile, not the tags gdal-oci has just published.
   # There is no scheduled rebuild: a new base image invalidates every layer, so every build started by
   # gdal-oci is a full one
   workflow_dispatch:
@@ -17,6 +19,10 @@ on:
         default: ""
       python_version:
         description: ndscprm/gdal Python version (base image tags). Empty = ARG PYTHON_VERSION in the Dockerfile
+        required: false
+        default: ""
+      base_date:
+        description: ndscprm/gdal dated tag suffix (YYYYMMDD or YYYYMMDD.N). Empty = ARG BASE_DATE in the Dockerfile
         required: false
         default: ""
   pull_request:
@@ -51,6 +57,7 @@ jobs:
       build-args: |
         ${{ inputs.gdal_version && format('GDAL_VERSION={0}', inputs.gdal_version) || '' }}
         ${{ inputs.python_version && format('PYTHON_VERSION={0}', inputs.python_version) || '' }}
+        ${{ inputs.base_date && format('BASE_DATE={0}', inputs.base_date) || '' }}
       labels: |
         org.opencontainers.image.title=pygeoapi
         org.opencontainers.image.description=Implementação OCI de pygeoapi

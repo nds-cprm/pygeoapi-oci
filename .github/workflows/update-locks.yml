@@ -2,8 +2,9 @@
 # request; the image build never resolves dependencies, it only reads the locks.
 #
 # Runs on pushes to main that touch the Dockerfile:
-#   - GDAL_VERSION or PYTHON_VERSION changed (new base image): regenerates every
-#     lock, since they are resolved against the packages the base image ships
+#   - GDAL_VERSION, PYTHON_VERSION or BASE_DATE changed (new base image):
+#     regenerates every lock, since they are resolved against the packages the
+#     base image ships
 #   - the latest pygeoapi on PyPI has no lock yet: generates it and makes it the
 #     default PYGEOAPI_VERSION
 #
@@ -38,7 +39,7 @@ jobs:
       - name: Regenerate every lock if the base image changed
         run: |
           base_args() {
-              grep -E '^ARG (GDAL_VERSION|PYTHON_VERSION)=' "$@"
+              grep -E '^ARG (GDAL_VERSION|PYTHON_VERSION|BASE_DATE)=' "$@"
           }
           # first push of the branch: nothing to compare against
           if [ "$BEFORE" = 0000000000000000000000000000000000000000 ] ||

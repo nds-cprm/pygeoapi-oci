@@ -17,8 +17,9 @@
 # edited by hand and installed afterwards, constrained to these versions.
 #
 # Resolves inside the same -devel image as the wheels stage, with the base image
-# versions read from the Dockerfile ARG defaults, and with the packages that
-# image ships (GDAL, numpy, pyarrow, pip...) as constraints, as the build does.
+# versions and date read from the Dockerfile ARG defaults, and with the packages
+# that image ships (GDAL, numpy, pyarrow, pip...) as constraints, as the build
+# does.
 # Those packages are left out: the base image already pins and hash-checks them,
 # and the build fetches the lock with --no-deps, so it never downloads them again.
 #
@@ -37,7 +38,8 @@ arg() {
 
 GDAL_VERSION=$(arg GDAL_VERSION)
 PYTHON_VERSION=$(arg PYTHON_VERSION)
-IMAGE=docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel
+BASE_DATE=$(arg BASE_DATE)
+IMAGE=docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel-${BASE_DATE}
 
 if [ -z "${CONTAINER_ENGINE:-}" ]; then
     if command -v podman >/dev/null 2>&1; then

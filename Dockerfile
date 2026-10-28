@@ -1,6 +1,11 @@
 # base images: ndscprm/gdal (Debian trixie + official Python + GDAL in /opt/geosgb)
 ARG GDAL_VERSION=3.12.4
 ARG PYTHON_VERSION=3.12
+# dated tag of the base image (<YYYYMMDD>, or <YYYYMMDD>.N for a later build on
+# the same day): the plain tags are rebuilt in place, the dated ones never are,
+# and the devel and runtime images of a build share the same date. Changing it
+# is a base image change: the update-locks workflow regenerates every lock
+ARG BASE_DATE=20261026
 
 # default pygeoapi version, also read by the CI workflow (keep this format)
 ARG PYGEOAPI_VERSION=0.24.0
@@ -15,7 +20,7 @@ ARG OGC_SCHEMAS_SHA256=c9aa5c7af6a8eeba4c68bc58295f37444dedab6838d184cbb95d0f09f
 # OGC API schemas, served locally instead of fetched at runtime. The devel image
 # already has wget/unzip (the runtime one does not) and is pulled for the wheels
 # stage anyway; a separate stage keeps its cache apart and builds in parallel
-FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel AS schemas
+FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel-${BASE_DATE} AS schemas
 
 ARG OGC_SCHEMAS_SHA256
 
@@ -32,7 +37,7 @@ RUN wget -q https://schemas.opengis.net/SCHEMAS_OPENGIS_NET.zip && \
 # wheels for every Python dependency: the devel image has the compilers and
 # -dev headers, so packages without a binary wheel (uWSGI) are built here, against
 # the same Python and GDAL as the final stage; binary wheels are only downloaded
-FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel AS wheels
+FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel-${BASE_DATE} AS wheels
 
 ARG PYGEOAPI_VERSION
 
@@ -98,7 +103,7 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
         -r /tmp/requirements/extra/requirements.txt
 
 
-FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}
+FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-${BASE_DATE}
 
 ARG PYGEOAPI_VERSION
 
