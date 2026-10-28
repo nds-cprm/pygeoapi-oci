@@ -88,14 +88,21 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
         -c /tmp/base-constraints.txt --build-constraint /tmp/base-constraints.txt \
         -r "$lock"
 
-# extras, in a layer of their own: requirements/extra/requirements.txt is their
-# lock (generated from requirements.in), hash-checked like the pygeoapi one. It
-# leaves out what the pygeoapi lock already has, so --no-deps fetches only the
-# packages the extras add and never the shared ones again. The pygeoapi lock
-# goes in as constraints, without its hashes (they would turn on hash-checking
-# for packages this step does not fetch), so an extra cannot move any of its
+# extras, in a layer of their own: requirements/extra/${PYGEOAPI_VERSION}.txt is
+# their lock for this pygeoapi version (generated from requirements.in with the
+# pygeoapi lock), hash-checked like the pygeoapi one. It leaves out what the
+# pygeoapi lock already has, so --no-deps fetches only the packages the extras
+# add and never the shared ones again. The pygeoapi lock goes in as
+# constraints, without its hashes (they would turn on hash-checking for
+# packages this step does not fetch), so an extra cannot move any of its
 # versions
 RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
+    lock=/tmp/requirements/extra/${PYGEOAPI_VERSION}.txt && \
+    if [ ! -f "$lock" ]; then \
+        echo "no extras lock for pygeoapi ${PYGEOAPI_VERSION}:" \
+            "run requirements/update-requirements.sh ${PYGEOAPI_VERSION}" >&2; \
+        exit 1; \
+    fi && \
     pip freeze --all > /tmp/base-constraints.txt && \
     sed -n 's/^\([^ #][^ ]*==[^ ]*\).*/\1/p' \
         /tmp/requirements/pygeoapi/${PYGEOAPI_VERSION}.txt \
@@ -104,7 +111,7 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
         --require-hashes --no-deps \
         -c /tmp/base-constraints.txt -c /tmp/pygeoapi-constraints.txt \
         --build-constraint /tmp/base-constraints.txt \
-        -r /tmp/requirements/extra/requirements.txt
+        -r "$lock"
 
 
 FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-${BASE_DATE}
@@ -130,7 +137,7 @@ RUN --mount=type=bind,source=requirements,target=/tmp/requirements \
     --mount=type=bind,from=wheels,source=/wheels,target=/wheels \
     pip freeze --all > /tmp/installed-constraints.txt && \
     sed -n 's/^\([^ #][^ ]*==[^ ]*\).*/\1/p' \
-        /tmp/requirements/extra/requirements.txt > /tmp/extra-requirements.txt && \
+        /tmp/requirements/extra/${PYGEOAPI_VERSION}.txt > /tmp/extra-requirements.txt && \
     pip install --no-cache-dir --no-index --find-links /wheels \
         -c /tmp/installed-constraints.txt -r /tmp/extra-requirements.txt
 

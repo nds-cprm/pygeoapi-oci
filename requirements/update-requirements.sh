@@ -1,27 +1,27 @@
 #!/bin/sh
-# Generates the lock files the build installs from, with every package pinned to
-# the version resolved now and the SHA-256 of its PyPI files, so the build runs
-# pip in hash-checking mode:
+# Generates the lock files the build installs from, two per pygeoapi version,
+# with every package pinned to the version resolved now and the SHA-256 of its
+# PyPI files, so the build runs pip in hash-checking mode:
 #
 #   - requirements/pygeoapi/<version>.txt: pygeoapi and its whole dependency
-#     tree. The build picks the file by PYGEOAPI_VERSION; each version keeps its
-#     own, so locking a new version never changes what an existing one installs.
-#   - requirements/extra/requirements.txt (argument "extra"): the extras listed
-#     by hand in requirements/extra/requirements.in and the dependencies only
-#     they pull in. Resolved constrained to the lock of the default
-#     PYGEOAPI_VERSION; what that lock already has is left out, so the extras
-#     can only add packages. The file is shared by every pygeoapi version.
+#     tree.
+#   - requirements/extra/<version>.txt: the extras listed by hand in
+#     requirements/extra/requirements.in and the dependencies only they pull
+#     in, resolved constrained to the pygeoapi lock of the same version; what
+#     that lock already has is left out, so the extras can only add packages.
+#
+# The build picks both files by PYGEOAPI_VERSION; each version keeps its own,
+# so locking a new version never changes what an existing one installs.
 #
 #   requirements/update-requirements.sh                         # PYGEOAPI_VERSION from the Dockerfile
 #   requirements/update-requirements.sh 0.25.0                  # one or more versions
-#   requirements/update-requirements.sh requirements/pygeoapi/*  # every existing lock (after a base image change)
-#   requirements/update-requirements.sh extra                   # the extras (after editing requirements.in)
+#   requirements/update-requirements.sh requirements/pygeoapi/*  # every existing version (after a base image change)
+#   requirements/update-requirements.sh extra                   # only the extras of every version (after editing requirements.in)
 #
 # Paths are accepted only when the file name is <version>.txt (it starts with a
 # digit); any other file is skipped with a message.
 #
-# Commit the result. After a new default PYGEOAPI_VERSION or a base image
-# change, regenerate the extras too (last, since they depend on that lock).
+# Commit the result.
 #
 # Resolves inside the same -devel image as the wheels stage, with the base image
 # versions and date read from the Dockerfile ARG defaults, and with the packages
@@ -147,32 +147,31 @@ write() {
     echo "$1: $(grep -c '==' "$1") packages, $(grep -c -- '--hash=' "$1") hashes" >&2
 }
 
+# lock <version>: the pygeoapi lock of that version, then its extras lock
 lock() {
     version=$1
+    output=requirements/pygeoapi/$version.txt
     echo "resolving pygeoapi $version with $IMAGE" >&2
-    resolve "pygeoapi==$version" "" > requirements/pygeoapi/$version.txt.out
-    write requirements/pygeoapi/$version.txt "pygeoapi $version and its dependencies" \
-        < requirements/pygeoapi/$version.txt.out
-    rm -f requirements/pygeoapi/$version.txt.out
+    resolve "pygeoapi==$version" "" > "$output.out"
+    write "$output" "pygeoapi $version and its dependencies" < "$output.out"
+    rm -f "$output.out"
+    lock_extra "$version"
 }
 
+# lock_extra <version>: the extras lock of a version whose pygeoapi lock exists
 lock_extra() {
-    version=$(arg PYGEOAPI_VERSION)
-    base_lock=requirements/pygeoapi/$version.txt
-    if [ ! -f "$base_lock" ]; then
-        echo "no lock file for pygeoapi $version: generate it first" >&2
-        exit 1
-    fi
+    version=$1
+    output=requirements/extra/$version.txt
     echo "resolving requirements/extra/requirements.in with $IMAGE" \
         "and the lock of pygeoapi $version" >&2
-    output=requirements/extra/requirements.txt
-    resolve "$(cat requirements/extra/requirements.in)" "$(pins "$base_lock")" > "$output.out"
+    resolve "$(cat requirements/extra/requirements.in)" \
+        "$(pins "requirements/pygeoapi/$version.txt")" > "$output.out"
     write "$output" "extras (requirements.in) and the dependencies only they pull in, besides pygeoapi $version," \
         < "$output.out"
     rm -f "$output.out"
 }
 
-mkdir -p requirements/pygeoapi
+mkdir -p requirements/pygeoapi requirements/extra
 
 if [ $# -eq 0 ]; then
     set -- "$(arg PYGEOAPI_VERSION)"
@@ -180,11 +179,15 @@ fi
 
 for version in "$@"; do
     # also accepts lock file paths (requirements/pygeoapi/0.24.0.txt -> 0.24.0);
-    # any other file, such as requirements/extra/requirements.txt, is skipped, so
+    # any other file, such as requirements/extra/requirements.in, is skipped, so
     # globs over requirements/ are safe too
     case $version in
         extra)
-            lock_extra
+            for base_lock in requirements/pygeoapi/[0-9]*.txt; do
+                [ -f "$base_lock" ] || continue
+                base_lock=${base_lock##*/}
+                lock_extra "${base_lock%.txt}"
+            done
             continue
             ;;
         */*|*.txt)
