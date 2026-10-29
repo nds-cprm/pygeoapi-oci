@@ -2,7 +2,7 @@
 # (README of gdal-oci, "Workflow reutilizável"): native runners per architecture (amd64 and arm64, so
 # rasterio, pyproj and shapely are compiled without emulation), push by digest, tags only after the tests
 # and scans of both architectures.
-name: Docker Image CI
+name: Publish image
 
 on:
   # manual, and also dispatched by the CI of gdal-oci after it publishes new ndscprm/gdal images, with their
@@ -71,7 +71,7 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-publish
       cancel-in-progress: false
-    uses: nds-cprm/gdal-oci/.github/workflows/oci-image.yml@main
+    uses: nds-cprm/gdal-oci/.github/workflows/reusable-publish-image.yml@main
     permissions:
       contents: read
       # upload of the SARIF reports to code scanning
