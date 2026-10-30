@@ -88,13 +88,8 @@ jobs:
       build-args: |
         ${{ inputs.image_devel && format('GDAL_IMAGE_DEVEL={0}', inputs.image_devel) || '' }}
         ${{ inputs.image_py && format('GDAL_IMAGE_PY={0}', inputs.image_py) || '' }}
-      labels: |
-        org.opencontainers.image.title=pygeoapi
-        org.opencontainers.image.description=Implementação OCI de pygeoapi
-        org.opencontainers.image.version={version}
-        org.opencontainers.image.licenses=Apache-2.0
-        org.opencontainers.image.url=https://github.com/nds-cprm/pygeoapi-oci
-      # the final stage has no name: no target, Bake builds the last stage
+      # the OCI labels come from the Dockerfile; created, revision and source from the reusable workflow.
+      # The final stage has no name: no target, Bake builds the last stage
       variants: |
         [
           {"name": "release", "tag": "{version}", "scan": true,

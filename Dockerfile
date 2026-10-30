@@ -133,9 +133,20 @@ FROM ${GDAL_IMAGE_PY}
 # the base this image was built on: its tags (<PYGEOAPI_VERSION>, and the dated
 # one) do not say
 ARG GDAL_IMAGE_PY
-LABEL org.opencontainers.image.base.name="${GDAL_IMAGE_PY}"
-
 ARG PYGEOAPI_VERSION
+
+# every key, or the labels of the ndscprm/gdal base would show through; created
+# and revision are set by the CI, for each build
+LABEL org.opencontainers.image.title="pygeoapi" \
+      org.opencontainers.image.description="pygeoapi (OGC API) servido pelo uWSGI, sobre GDAL e Python" \
+      org.opencontainers.image.version="${PYGEOAPI_VERSION}" \
+      org.opencontainers.image.vendor="SGB/CPRM" \
+      org.opencontainers.image.authors="Carlos Eduardo Mota <carlos.mota@sgb.gov.br>" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.url="https://hub.docker.com/r/ndscprm/pygeoapi" \
+      org.opencontainers.image.documentation="https://github.com/nds-cprm/pygeoapi-oci#readme" \
+      org.opencontainers.image.source="https://github.com/nds-cprm/pygeoapi-oci" \
+      org.opencontainers.image.base.name="${GDAL_IMAGE_PY}"
 
 # installs from the wheels stage only (no index): pygeoapi first, constrained to
 # this image's own packages; then the extras, constrained to everything already
