@@ -127,7 +127,7 @@ pygeoapi does **not** read the `Host` or `X-Forwarded-*` headers. `PYGEOAPI_SERV
 
 - **Native stack from the base image:** GDAL 3.12, PROJ 9.6 and GEOS 3.13.
 - **Built from source against that stack:** `rasterio`, `pyproj` and `shapely`.
-- **Extra provider:** OpenSearch (`opensearch-dsl`).
+- **Extra providers:** OpenSearch (`opensearch-dsl`) and PostgreSQL (`geoalchemy2`, with `psycopg2` built from source against the base image's libpq).
 - **Application server:** uWSGI, built from source.
 
 ## License

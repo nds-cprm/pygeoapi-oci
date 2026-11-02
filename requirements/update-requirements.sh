@@ -162,7 +162,12 @@ EOF
 # installs into the build environments of the sdists among the requirements
 # (pinned lines, fetched with --no-deps), NO_BINARY ones included, while it
 # prepares their metadata (pip -v logs each "Successfully installed"), with the
-# same environment and constraints as the wheels stage
+# same environment and constraints as the wheels stage. When the environments
+# get different versions of a package (each sdist gets the newest its own
+# requirements allow, e.g. Cython 3.3.1 for pyproj and 3.3.0 for rasterio,
+# which caps it), the lowest is taken and pip runs again with those versions as
+# --build-constraint, which checks that every sdist accepts them; a conflict
+# left then fails, since a --build-constraint pins one version per package
 build_requirements() {
     "$CONTAINER_ENGINE" run --rm -i --entrypoint sh \
         -e REQUIREMENTS="$1" -e NO_BINARY="$NO_BINARY" \
@@ -171,32 +176,55 @@ build_requirements() {
             cat > /tmp/installed.py
             printf "%s\n" "$REQUIREMENTS" > /tmp/requirements.txt
             pip freeze --all > /tmp/base-constraints.txt
-            if ! PROJ_DIR=/usr PROJ_VERSION=$(pkg-config --modversion proj) \
-                pip install -v --no-cache-dir --dry-run --ignore-installed \
-                    --no-deps --no-binary "$NO_BINARY" \
-                    -c /tmp/base-constraints.txt \
-                    --build-constraint /tmp/base-constraints.txt \
-                    -r /tmp/requirements.txt > /tmp/pip.log 2>&1; then
-                tail -40 /tmp/pip.log >&2
-                exit 1
+            prepare() {
+                if ! PROJ_DIR=/usr PROJ_VERSION=$(pkg-config --modversion proj) \
+                    pip install -v --no-cache-dir --dry-run --ignore-installed \
+                        --no-deps --no-binary "$NO_BINARY" \
+                        -c /tmp/base-constraints.txt \
+                        --build-constraint /tmp/base-constraints.txt "$@" \
+                        -r /tmp/requirements.txt > /tmp/pip.log 2>&1; then
+                    tail -40 /tmp/pip.log >&2
+                    exit 1
+                fi
+            }
+            prepare
+            status=0
+            python3 /tmp/installed.py /tmp/pip.log > /tmp/build.txt || status=$?
+            if [ "$status" = 3 ]; then
+                echo "preparing the sdists again with the lowest versions" >&2
+                prepare --build-constraint /tmp/build.txt
+                python3 /tmp/installed.py /tmp/pip.log strict > /tmp/build.txt
+            elif [ "$status" != 0 ]; then
+                exit "$status"
             fi
-            python3 /tmp/installed.py /tmp/pip.log
+            cat /tmp/build.txt
         ' <<'EOF'
 import re
 import sys
 
+from packaging.version import Version
+
+strict = sys.argv[2:] == ['strict']
 versions = {}
+conflict = False
 for line in open(sys.argv[1]):
     match = re.match(r'\s+Successfully installed (.*)', line)
     for package in match.group(1).split() if match else ():
         name, version = package.rsplit('-', 1)
         key = re.sub(r'[-_.]+', '-', name).lower()
-        if versions.setdefault(key, (name, version))[1] != version:
-            sys.exit(f'{name}: build environments need both {versions[key][1]} and {version}')
+        seen = versions.setdefault(key, (name, version))[1]
+        if seen != version:
+            if strict:
+                sys.exit(f'{name}: build environments need both {seen} and {version}')
+            print(f'{name}: build environments got {seen} and {version}', file=sys.stderr)
+            conflict = True
+            if Version(version) < Version(seen):
+                versions[key] = (name, version)
 if not versions:
     sys.exit('no build environment found: nothing is built from source?')
 for name, version in sorted(versions.values(), key=lambda p: p[0].lower()):
     print(f'{name}=={version}')
+sys.exit(3 if conflict else 0)
 EOF
 }
 
